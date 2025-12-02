@@ -21,7 +21,7 @@ const FREQUENCIES = [
 //               COMPONENTS
 // ==========================================
 
-const StatBox = ({ label, value, subValue, highlight, isPositive }) => (
+const StatBox = ({ label, value, subValue, highlight, isPositive }: any) => (
   <div className="flex flex-col bg-white p-3 rounded-lg border border-slate-200 flex-1">
     <span className="text-[10px] uppercase font-bold text-slate-600 tracking-wider mb-1">{label}</span>
     <div className={`text-lg font-extrabold leading-none ${highlight ? (isPositive ? 'text-green-700' : 'text-slate-900') : 'text-slate-900'}`}>
@@ -31,7 +31,7 @@ const StatBox = ({ label, value, subValue, highlight, isPositive }) => (
   </div>
 );
 
-const CompactSlider = ({ label, value, min, max, onChange, unit }) => (
+const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
   <div className="w-full">
     <div className="flex justify-between items-center mb-1">
       <span className="text-xs font-bold text-slate-800">{label}</span>
