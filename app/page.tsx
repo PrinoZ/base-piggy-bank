@@ -138,7 +138,7 @@ export default function App() {
         {activeTab === 'strategy' ? (
           <>
             {/* Chart Section */}
-            {/* 修改点 1: 高度调整为 32% */}
+            {/* 高度 32% */}
             <div className="flex-none h-[32%] w-full bg-slate-50 border-b border-slate-200 flex flex-col relative">
               
               {/* Header Stats */}
@@ -280,8 +280,9 @@ export default function App() {
                     unit="Months"
                     onChange={setDuration} 
                   />
+                  {/* 修改点 1: Label 改为 Predict BTC */}
                   <CompactSlider 
-                    label="Projected BTC" 
+                    label="Predict BTC" 
                     value={projectedPrice} 
                     min={CURRENT_ASSET_PRICE} 
                     max={200000} 
@@ -292,8 +293,8 @@ export default function App() {
               </div>
 
               {/* Action Button */}
-              {/* text-center 并在 button 下方加了小字 */}
-              <div className="mt-3 mb-2 pt-2 border-t border-slate-100 flex-none text-center">
+              {/* 修改点 2: 调整 margin (mt-2 mb-0) 让按钮更靠下，给上面腾空间 */}
+              <div className="mt-2 mb-0 pt-2 border-t border-slate-100 flex-none text-center">
                 <button 
                   className="w-full bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all text-white font-bold text-lg py-3 rounded-xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2"
                   onClick={() => alert("Executing Smart Contract:\n1. Approve USDC\n2. Schedule DCA")}
@@ -384,7 +385,7 @@ export default function App() {
 
       {/* --- 3. Bottom Navigation Bar --- */}
       <nav className="flex-none bg-white border-t border-slate-200 pb-safe z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-        {/* 修改点 2: 高度调整为 h-16 */}
+        {/* 高度 h-16 */}
         <div className="flex justify-around items-center h-16">
           <button 
             onClick={() => setActiveTab('strategy')}
