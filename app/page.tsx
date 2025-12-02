@@ -138,7 +138,7 @@ export default function App() {
         {activeTab === 'strategy' ? (
           <>
             {/* Chart Section */}
-            {/* 修改点 1: 高度从 30% 增加到 33% */}
+            {/* 高度保持 33% */}
             <div className="flex-none h-[33%] w-full bg-slate-50 border-b border-slate-200 flex flex-col relative">
               
               {/* Header Stats */}
@@ -165,7 +165,7 @@ export default function App() {
               {/* Chart Container */}
               <div className="flex-1 min-h-0 w-full pt-2">
                 <ResponsiveContainer width="100%" height="100%">
-                  {/* 修改点 2: right margin 增加到 35 */}
+                  {/* right margin 35 */}
                   <AreaChart data={calculation.data} margin={{ top: 5, right: 35, left: 20, bottom: 5 }}>
                     <defs>
                       <linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1">
@@ -292,13 +292,17 @@ export default function App() {
               </div>
 
               {/* Action Button */}
-              <div className="mt-3 mb-2 pt-2 border-t border-slate-100 flex-none">
+              {/* 修改点：添加了 text-center 并在 button 下方加了小字 */}
+              <div className="mt-3 mb-2 pt-2 border-t border-slate-100 flex-none text-center">
                 <button 
                   className="w-full bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all text-white font-bold text-lg py-3 rounded-xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2"
                   onClick={() => alert("Executing Smart Contract:\n1. Approve USDC\n2. Schedule DCA")}
                 >
                   Start DCA <ChevronRight size={20} />
                 </button>
+                <p className="text-[10px] text-slate-400 mt-2 px-2 font-medium">
+                  This is a non-custodial protocol. We don't hold any user funds.
+                </p>
               </div>
 
             </div>
