@@ -7,12 +7,12 @@
   "frame": {
     "version": "1",
     "name": "Base piggy bank",
-    "iconUrl": "https://你的占位符/icon.png",
-    "homeUrl": "https://你的占位符",
-    "imageUrl": "https://你的占位符/og-image.png",
+    "iconUrl": "https://base-piggy-bank.vercel.app/icon.png",
+    "homeUrl": "https://base-piggy-bank.vercel.app/",
+    "imageUrl": "https://base-piggy-bank.vercel.app/og-image.png",
     "buttonTitle": "Open Piggy Bank",
-    "splashImageUrl": "https://你的占位符/splash.png",
+    "splashImageUrl": "https://base-piggy-bank.vercel.app/splash.png",
     "splashBackgroundColor": "#ffffff",
-    "webhookUrl": "https://你的占位符/api/webhook"
+    "webhookUrl": "https://base-piggy-bank.vercel.app/api/webhook"
   }
 }
