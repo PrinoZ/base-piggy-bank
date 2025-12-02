@@ -1,0 +1,18 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOiA...",
+    "payload": "eyJkb21haW4iOiA...",
+    "signature": "MHgyY..."
+  },
+  "frame": {
+    "version": "1",
+    "name": "Base piggy bank",
+    "iconUrl": "https://你的占位符/icon.png",
+    "homeUrl": "https://你的占位符",
+    "imageUrl": "https://你的占位符/og-image.png",
+    "buttonTitle": "Open Piggy Bank",
+    "splashImageUrl": "https://你的占位符/splash.png",
+    "splashBackgroundColor": "#ffffff",
+    "webhookUrl": "https://你的占位符/api/webhook"
+  }
+}
