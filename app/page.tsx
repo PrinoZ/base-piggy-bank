@@ -138,8 +138,8 @@ export default function App() {
         {activeTab === 'strategy' ? (
           <>
             {/* Chart Section */}
-            {/* 高度保持 33% */}
-            <div className="flex-none h-[33%] w-full bg-slate-50 border-b border-slate-200 flex flex-col relative">
+            {/* 修改点 1: 高度调整为 32% */}
+            <div className="flex-none h-[32%] w-full bg-slate-50 border-b border-slate-200 flex flex-col relative">
               
               {/* Header Stats */}
               <div className="px-5 pt-4 pb-1 flex-none flex justify-between items-start">
@@ -292,7 +292,7 @@ export default function App() {
               </div>
 
               {/* Action Button */}
-              {/* 修改点：添加了 text-center 并在 button 下方加了小字 */}
+              {/* text-center 并在 button 下方加了小字 */}
               <div className="mt-3 mb-2 pt-2 border-t border-slate-100 flex-none text-center">
                 <button 
                   className="w-full bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all text-white font-bold text-lg py-3 rounded-xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2"
@@ -384,7 +384,8 @@ export default function App() {
 
       {/* --- 3. Bottom Navigation Bar --- */}
       <nav className="flex-none bg-white border-t border-slate-200 pb-safe z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-        <div className="flex justify-around items-center h-20">
+        {/* 修改点 2: 高度调整为 h-16 */}
+        <div className="flex justify-around items-center h-16">
           <button 
             onClick={() => setActiveTab('strategy')}
             className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'strategy' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
