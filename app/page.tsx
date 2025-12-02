@@ -171,7 +171,7 @@ export default function App() {
                       contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px', fontSize: '12px', color: 'white', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.3)' }}
                       itemStyle={{ color: '#60A5FA', fontWeight: 'bold' }}
                       labelStyle={{ display: 'none' }}
-                      formatter={(val) => [`${val.toFixed(4)}`, 'cbBTC']}
+                      formatter={(val: any) => [`${Number(val).toFixed(4)}`, 'cbBTC']}
                     />
                     <Area 
                       type="monotone" 
