@@ -51,7 +51,7 @@ const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
       max={max}
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      // 修改点：这里改为 h-3
+      // 保持 h-3 的滑块高度
       className="w-full h-3 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
     />
   </div>
@@ -138,7 +138,8 @@ export default function App() {
         {activeTab === 'strategy' ? (
           <>
             {/* Chart Section */}
-            <div className="flex-none h-[30%] w-full bg-slate-50 border-b border-slate-200 flex flex-col relative">
+            {/* 修改点 1: 高度从 30% 增加到 33% */}
+            <div className="flex-none h-[33%] w-full bg-slate-50 border-b border-slate-200 flex flex-col relative">
               
               {/* Header Stats */}
               <div className="px-5 pt-4 pb-1 flex-none flex justify-between items-start">
@@ -164,7 +165,8 @@ export default function App() {
               {/* Chart Container */}
               <div className="flex-1 min-h-0 w-full pt-2">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={calculation.data} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                  {/* 修改点 2: right margin 增加到 35 */}
+                  <AreaChart data={calculation.data} margin={{ top: 5, right: 35, left: 20, bottom: 5 }}>
                     <defs>
                       <linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#2563EB" stopOpacity={0.25}/>
