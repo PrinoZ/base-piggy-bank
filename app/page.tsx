@@ -159,13 +159,31 @@ export default function App() {
         // const usdc = new ethers.Contract(USDC_ADDRESS, ["function approve(address,uint256)"], signer);
         // await usdc.approve(YOUR_CONTRACT_ADDRESS, ethers.MaxUint256);
 
-        // --- 步骤 2: 计算参数 ---
+        // --- 步骤 2: 确保用户存在 (修复 Foreign Key 报错的关键步骤) ---
+        console.log("Registering/Checking user in Supabase...");
+        
+        const { error: userError } = await supabase
+            .from('users')
+            .upsert(
+                { 
+                  wallet_address: currentAccount 
+                  // 如果数据库有其他必填字段，可以在这里添加，例如 created_at
+                }, 
+                { onConflict: 'wallet_address' }
+            )
+            .select();
+
+        if (userError) {
+            console.error("User Registration Error:", userError);
+            throw new Error("Failed to register user: " + userError.message);
+        }
+
+        // --- 步骤 3: 计算参数并写入任务 ---
         const selectedFreq = FREQUENCIES[freqIndex];
         const frequencyInSeconds = selectedFreq.days * 24 * 60 * 60; // 天数转秒
 
         console.log("Submitting job to Supabase...");
 
-        // --- 步骤 3: 写入 Supabase ---
         const { data, error } = await supabase
             .from('dca_jobs')
             .insert([
