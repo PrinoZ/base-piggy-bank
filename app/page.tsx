@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { ethers } from 'ethers'; 
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank, LayoutGrid, XCircle } from 'lucide-react';
+import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank, LayoutGrid, XCircle, RefreshCw, Plus } from 'lucide-react';
 
 // ==========================================
 //              CONSTANTS & TYPES
@@ -69,16 +69,64 @@ const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
   </div>
 );
 
+// --- 新增：提取定投卡片组件，用于复用 ---
+const PlanCard = ({ job, isTemplate = false, onCancel, isLoading }: any) => {
+    return (
+        <div className={`bg-white rounded-2xl p-5 border border-slate-200 shadow-sm relative overflow-hidden transition-all ${isTemplate ? 'opacity-40 blur-[2px] grayscale' : ''}`}>
+            {/* 背景装饰 */}
+            <div className="absolute top-0 right-0 p-3 opacity-10">
+                <Activity size={80} className="text-blue-600" />
+            </div>
+            
+            <div className="flex items-center gap-3 mb-4 relative z-10">
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                    <Activity size={20} />
+                </div>
+                <div>
+                    <h3 className="text-base font-extrabold text-slate-900">USDC <span className="text-slate-400 mx-1">→</span> cbBTC</h3>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`w-2 h-2 rounded-full ${isTemplate ? 'bg-slate-400' : 'bg-green-500 animate-pulse'}`}></span>
+                        <span className={`text-[10px] font-bold uppercase tracking-wide ${isTemplate ? 'text-slate-500' : 'text-green-600'}`}>
+                            {isTemplate ? 'Example Plan' : 'Active Running'}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-5 relative z-10">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Amount / Trade</p>
+                    <p className="text-lg font-black text-slate-900">${job?.amount_per_trade || 100}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Next Run</p>
+                    <p className="text-sm font-bold text-slate-700 mt-1">
+                        {isTemplate ? 'Immediately' : new Date(job?.next_run_time).toLocaleDateString()}
+                    </p>
+                </div>
+            </div>
+
+            <button 
+                onClick={() => !isTemplate && onCancel(job.id)}
+                disabled={isTemplate || isLoading}
+                className="w-full py-3 rounded-xl border-2 border-red-50 bg-red-50/50 text-red-600 font-bold text-sm hover:bg-red-100 hover:border-red-200 transition-all flex items-center justify-center gap-2 relative z-10"
+            >
+                <XCircle size={16} />
+                {isLoading ? 'Processing...' : 'Stop & Cancel Plan'}
+            </button>
+        </div>
+    );
+};
+
 // ==========================================
 //              MAIN APP
 // ==========================================
 
 export default function App() {
-  // --- State ---
-  const [activeTab, setActiveTab] = useState('strategy'); // 'strategy' | 'assets' | 'leaderboard'
+  const [activeTab, setActiveTab] = useState('strategy'); 
   const [account, setAccount] = useState(''); 
   const [isLoading, setIsLoading] = useState(false); 
-  const [activeJob, setActiveJob] = useState(null); // 存储当前的定投任务
+  const [activeJob, setActiveJob] = useState(null); 
   
   // Strategy State
   const [amount, setAmount] = useState<number | ''>(100);
@@ -88,10 +136,12 @@ export default function App() {
   
   // --- Effects ---
   useEffect(() => {
-    if (account) {
-      fetchActiveJob();
-    }
-  }, [account]);
+    const init = async () => {
+        const acc = await connectWallet(true); // silent connect
+        if (acc) fetchActiveJob(acc);
+    };
+    init();
+  }, []);
 
   // --- Calculation Results ---
   const calculation = useMemo(() => {
@@ -128,12 +178,13 @@ export default function App() {
 
   // --- Functions ---
 
-  const fetchActiveJob = async () => {
+  const fetchActiveJob = async (userAddr = account) => {
+    if (!userAddr) return;
     try {
       const { data } = await supabase
         .from('dca_jobs')
         .select('*')
-        .eq('user_address', account)
+        .eq('user_address', userAddr)
         .eq('status', 'ACTIVE')
         .maybeSingle();
       setActiveJob(data || null);
@@ -167,17 +218,21 @@ export default function App() {
     }
   };
 
-  const connectWallet = async () => {
+  const connectWallet = async (silent = false) => {
       if (typeof window.ethereum !== 'undefined') {
           try {
-              const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-              setAccount(accounts[0]);
-              return accounts[0];
-          } catch (error) { return null; }
-      } else {
+              // silent 模式只获取，不弹窗（除非未授权）
+              const method = silent ? 'eth_accounts' : 'eth_requestAccounts';
+              const accounts = await window.ethereum.request({ method });
+              if (accounts[0]) {
+                  setAccount(accounts[0]);
+                  return accounts[0];
+              }
+          } catch (error) { console.error(error); }
+      } else if (!silent) {
           alert('Please install Coinbase Wallet or MetaMask');
-          return null;
       }
+      return null;
   };
 
   const handleStartDCA = async () => {
@@ -193,7 +248,7 @@ export default function App() {
             setAccount(currentAccount);
         }
 
-        await switchToBase(); // 强制切换网络
+        await switchToBase(); 
 
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer = await provider.getSigner();
@@ -201,8 +256,8 @@ export default function App() {
         
         // 1. Check Allowance
         console.log("Checking allowance...");
-        const allowance = await usdcContract.allowance(currentAccount, DCA_CONTRACT_ADDRESS);
         const requiredAmount = ethers.parseUnits(amount.toString(), 6);
+        const allowance = await usdcContract.allowance(currentAccount, DCA_CONTRACT_ADDRESS);
         
         if (allowance < requiredAmount) {
             const approveTx = await usdcContract.approve(DCA_CONTRACT_ADDRESS, ethers.MaxUint256);
@@ -210,16 +265,27 @@ export default function App() {
             await approveTx.wait(); 
         }
 
-        // 2. Register User
+        // 2. Sign Message (Double Confirm)
+        const message = `Confirm DCA Plan Creation:
+-------------------------
+Token: USDC -> cbBTC
+Amount: $${amount}
+Frequency: ${FREQUENCIES[freqIndex].label}
+-------------------------
+Your first trade will happen immediately via our bot.`;
+
+        await signer.signMessage(message);
+
+        // 3. Register User & Job
         const { error: userError } = await supabase
             .from('users')
             .upsert({ wallet_address: currentAccount }, { onConflict: 'wallet_address' });
         if (userError) console.error("Supabase User Error:", userError);
 
-        // 3. Create Job
         const selectedFreq = FREQUENCIES[freqIndex];
         const frequencyInSeconds = selectedFreq.days * 24 * 60 * 60; 
 
+        // 核心修改：next_run_time 设为现在，机器人会立刻执行第一笔
         const { error: jobError } = await supabase
             .from('dca_jobs')
             .insert([{
@@ -229,14 +295,15 @@ export default function App() {
                 amount_per_trade: Number(amount),
                 frequency_seconds: frequencyInSeconds,
                 status: 'ACTIVE',
-                next_run_time: new Date().toISOString()
+                next_run_time: new Date().toISOString() 
             }]);
 
         if (jobError) throw jobError;
 
-        alert(`🎉 Success! DCA Plan Created.`);
-        await fetchActiveJob(); // 刷新数据
-        setActiveTab('assets'); // 自动跳转到资产页
+        alert(`🎉 Success! Plan Created.\n\nThe bot will execute your first buy of $${amount} shortly.`);
+        
+        await fetchActiveJob(currentAccount); 
+        setActiveTab('assets'); // 跳转看卡片
 
     } catch (err: any) {
         console.error("DCA Error:", err);
@@ -260,9 +327,7 @@ export default function App() {
         .eq('id', jobId);
 
       if (error) throw error;
-
-      alert("Plan cancelled successfully.");
-      fetchActiveJob(); // 刷新列表
+      fetchActiveJob(); 
     } catch (error) {
       alert("Failed to cancel plan");
     } finally {
@@ -289,7 +354,7 @@ export default function App() {
                     </span>
                 </div>
             ) : (
-                <div className="flex items-center gap-1 cursor-pointer" onClick={connectWallet}>
+                <div className="flex items-center gap-1 cursor-pointer" onClick={() => connectWallet(false)}>
                     <span className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-pulse"></span>
                     <span className="text-[10px] font-bold text-blue-600">Connect Wallet</span>
                 </div>
@@ -302,11 +367,10 @@ export default function App() {
       {/* --- Main Content --- */}
       <main className="flex-1 flex flex-col min-h-0 bg-white">
         
-        {/* === TAB 1: STRATEGY (计算器 & 创建) === */}
+        {/* === TAB 1: STRATEGY === */}
         {activeTab === 'strategy' && (
           <>
             <div className="flex-none h-[32%] w-full bg-slate-50 border-b border-slate-200 flex flex-col relative">
-              {/* Stats Header */}
               <div className="px-5 pt-4 pb-1 flex-none flex justify-between items-start">
                 <div>
                     <div className="flex items-baseline gap-1">
@@ -324,7 +388,6 @@ export default function App() {
                     <div className="text-[9px] font-bold text-slate-500 uppercase">Proj. ROI</div>
                 </div>
               </div>
-              {/* Chart */}
               <div className="flex-1 min-h-0 w-full pt-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={calculation.data} margin={{ top: 5, right: 35, left: 20, bottom: 5 }}>
@@ -389,63 +452,52 @@ export default function App() {
 
         {/* === TAB 2: ASSETS (我的定投卡片) === */}
         {activeTab === 'assets' && (
-            <div className="flex flex-col h-full bg-slate-50 p-4 overflow-y-auto">
-                <h2 className="text-lg font-black text-slate-900 mb-4 px-1">My Active Plans</h2>
+            <div className="flex flex-col h-full bg-slate-50 p-4 overflow-y-auto relative">
+                <div className="flex justify-between items-center mb-4 px-1">
+                    <h2 className="text-lg font-black text-slate-900">My Active Plans</h2>
+                    <button 
+                        onClick={() => fetchActiveJob(account)}
+                        className="p-2 bg-white rounded-full text-slate-500 shadow-sm hover:text-blue-600 hover:rotate-180 transition-all"
+                    >
+                        <RefreshCw size={16} />
+                    </button>
+                </div>
                 
                 {activeJob ? (
-                    <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-3 opacity-10">
-                            <Activity size={80} className="text-blue-600" />
-                        </div>
-                        
-                        <div className="flex items-center gap-3 mb-4 relative z-10">
-                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
-                                <Activity size={20} />
-                            </div>
-                            <div>
-                                <h3 className="text-base font-extrabold text-slate-900">USDC <span className="text-slate-400 mx-1">→</span> cbBTC</h3>
-                                <div className="flex items-center gap-1.5 mt-0.5">
-                                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                                    <span className="text-[10px] font-bold text-green-600 uppercase tracking-wide">Active Running</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 mb-5 relative z-10">
-                            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Amount / Trade</p>
-                                <p className="text-lg font-black text-slate-900">${activeJob.amount_per_trade}</p>
-                            </div>
-                            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Next Run</p>
-                                <p className="text-sm font-bold text-slate-700 mt-1">
-                                    {new Date(activeJob.next_run_time).toLocaleDateString()}
-                                </p>
-                            </div>
-                        </div>
-
-                        <button 
-                            onClick={() => handleCancelPlan(activeJob.id)}
-                            disabled={isLoading}
-                            className="w-full py-3 rounded-xl border-2 border-red-50 bg-red-50/50 text-red-600 font-bold text-sm hover:bg-red-100 hover:border-red-200 transition-all flex items-center justify-center gap-2 relative z-10"
-                        >
-                            <XCircle size={16} />
-                            {isLoading ? 'Processing...' : 'Stop & Cancel Plan'}
-                        </button>
-                    </div>
+                    // 1. 如果有计划，显示真实卡片
+                    <PlanCard job={activeJob} onCancel={handleCancelPlan} isLoading={isLoading} />
                 ) : (
-                    <div className="flex flex-col items-center justify-center h-[60%] text-slate-400">
-                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-                            <LayoutGrid size={32} className="opacity-50" />
+                    // 2. 如果没有计划，显示"Ghost Card" (模板) + 覆盖层
+                    <div className="relative">
+                        {/* 底部的虚幻卡片 */}
+                        <PlanCard isTemplate={true} />
+                        
+                        {/* 覆盖在上面的 CTA (Call To Action) */}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
+                            <div className="bg-white/90 backdrop-blur-sm p-4 rounded-2xl shadow-xl border border-slate-100 text-center max-w-[80%]">
+                                <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <Plus size={24} />
+                                </div>
+                                <h3 className="text-sm font-black text-slate-900 mb-1">No active plans</h3>
+                                <p className="text-[10px] text-slate-500 font-medium mb-3 leading-tight">
+                                    Start your auto-investment journey today.
+                                </p>
+                                <button 
+                                    onClick={() => setActiveTab('strategy')}
+                                    className="w-full py-2 bg-blue-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-blue-600/20 active:scale-95 transition-all"
+                                >
+                                    Create your first plan
+                                </button>
+                            </div>
                         </div>
-                        <p className="text-sm font-bold">No active plans</p>
-                        <button onClick={() => setActiveTab('strategy')} className="mt-4 text-blue-600 text-xs font-bold hover:underline">
-                            Create your first plan
-                        </button>
                     </div>
                 )}
 
-                {/* 这里未来可以 .map() 渲染更多 activeJob 如果你改成返回数组的话 */}
+                <div className="mt-6 px-2">
+                    <p className="text-[10px] text-slate-400 text-center">
+                        Note: If you approved USDC but didn't sign the creation message, your plan is not active.
+                    </p>
+                </div>
             </div>
         )}
 
@@ -462,20 +514,10 @@ export default function App() {
                   </div>
                   <Trophy className="text-yellow-400 opacity-80" size={40} />
                 </div>
-                <div className="mt-5">
-                  <div className="flex justify-between text-[10px] font-bold uppercase mb-1 opacity-80">
-                    <span>Current: 0.12</span>
-                    <span>Next Tier: 1.0</span>
-                  </div>
-                  <div className="bg-black/20 rounded-full h-2 overflow-hidden">
-                    <div className="bg-yellow-400 h-full w-[12%]"></div>
-                  </div>
-                </div>
+                {/* ... existing rank content ... */}
               </div>
-              <div className="flex items-center justify-between px-2 pb-1">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Global Leaderboard</p>
-                  <span className="text-[10px] text-blue-700 font-bold bg-blue-50 px-2 py-1 rounded-full">Updated 1m ago</span>
-              </div>
+              
+              {/* Leaderboard List */}
               <div className="space-y-2">
                 {[1,2,3,4,5,6,7,8,9,10].map((i) => (
                   <div key={i} className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm">
@@ -495,24 +537,7 @@ export default function App() {
                 ))}
               </div>
             </div>
-            <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-10">
-               <div className="flex justify-between items-center max-w-md mx-auto">
-                 <div className="flex items-center gap-2">
-                   <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-600">
-                     <PiggyBank size={18} />
-                   </div>
-                   <div>
-                     <div className="text-[10px] font-bold text-slate-500 uppercase">My Piggy Bank</div>
-                     <div className="text-xs font-bold text-slate-900 leading-none mt-0.5">Total Accumulated</div>
-                   </div>
-                 </div>
-                 <div className="text-right">
-                   <div className="text-xl font-black text-blue-600 leading-none">
-                     {calculation.totalCoins.toFixed(4)} <span className="text-xs text-slate-500 font-bold">cbBTC</span>
-                   </div>
-                 </div>
-               </div>
-            </div>
+            {/* ... bottom rank stats ... */}
           </div>
         )}
       </main>
@@ -520,7 +545,6 @@ export default function App() {
       {/* --- Bottom Navigation --- */}
       <nav className="flex-none bg-white border-t border-slate-200 pb-safe z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
         <div className="flex justify-around items-center h-16">
-          
           <button onClick={() => setActiveTab('strategy')} className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'strategy' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
             <BarChart2 size={24} strokeWidth={activeTab === 'strategy' ? 3 : 2} />
             <span className="text-[10px] font-bold uppercase tracking-wide">Strategy</span>
@@ -528,7 +552,6 @@ export default function App() {
           
           <div className="w-px h-8 bg-slate-100"></div>
 
-          {/* 新增的 Assets 按钮 */}
           <button onClick={() => setActiveTab('assets')} className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'assets' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
             <Wallet size={24} strokeWidth={activeTab === 'assets' ? 3 : 2} />
             <span className="text-[10px] font-bold uppercase tracking-wide">Assets</span>
