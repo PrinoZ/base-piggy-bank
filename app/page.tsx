@@ -1,6 +1,8 @@
 // @ts-nocheck
 'use client';
 
+import { supabase } from '@/lib/supabaseClient';
+import { ethers } from 'ethers'; 
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank } from 'lucide-react';
@@ -10,6 +12,8 @@ import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, 
 // ==========================================
 
 const CURRENT_ASSET_PRICE = 64000; // 模拟 BTC 当前价格
+const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // Base USDC
+const CBBTC_ADDRESS = "0xcbB7C0000ab88B473b1f5aFd9ef808440eed33Bf"; // Base cbBTC
 
 const FREQUENCIES = [
   { label: 'Daily', days: 1, value: 'Daily' },
@@ -64,6 +68,8 @@ const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
 export default function App() {
   // --- State ---
   const [activeTab, setActiveTab] = useState('strategy'); // 'strategy' | 'leaderboard'
+  const [account, setAccount] = useState(''); // 存储用户钱包地址
+  const [isLoading, setIsLoading] = useState(false); // 加载状态
   
   // Strategy State
   const [amount, setAmount] = useState<number | ''>(100);
@@ -111,6 +117,86 @@ export default function App() {
     return { data, totalInvested, finalValue, profit, roi, totalCoins: accumulatedCoins };
   }, [amount, freqIndex, duration, projectedPrice]);
 
+  // --- Functions ---
+
+  // 1. 连接钱包
+  const connectWallet = async () => {
+      if (typeof window.ethereum !== 'undefined') {
+          try {
+              const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+              setAccount(accounts[0]);
+              return accounts[0];
+          } catch (error) {
+              console.error(error);
+              return null;
+          }
+      } else {
+          alert('Please install Coinbase Wallet or MetaMask');
+          return null;
+      }
+  };
+
+  // 2. 核心逻辑：开始定投
+  const handleStartDCA = async () => {
+    setIsLoading(true);
+    let currentAccount = account;
+
+    // A. 确保钱包已连接
+    if (!currentAccount) {
+        currentAccount = await connectWallet();
+        if (!currentAccount) {
+            setIsLoading(false);
+            return;
+        }
+    }
+
+    try {
+        // --- 步骤 1: 准备数据 ---
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        // const signer = await provider.getSigner();
+        
+        // 注意：真实环境中，这里需要调用 USDC 合约进行 approve
+        // const usdc = new ethers.Contract(USDC_ADDRESS, ["function approve(address,uint256)"], signer);
+        // await usdc.approve(YOUR_CONTRACT_ADDRESS, ethers.MaxUint256);
+
+        // --- 步骤 2: 计算参数 ---
+        const selectedFreq = FREQUENCIES[freqIndex];
+        const frequencyInSeconds = selectedFreq.days * 24 * 60 * 60; // 天数转秒
+
+        console.log("Submitting job to Supabase...");
+
+        // --- 步骤 3: 写入 Supabase ---
+        const { data, error } = await supabase
+            .from('dca_jobs')
+            .insert([
+                {
+                    user_address: currentAccount,
+                    token_in: USDC_ADDRESS,
+                    token_out: CBBTC_ADDRESS,
+                    amount_per_trade: Number(amount),
+                    frequency_seconds: frequencyInSeconds,
+                    status: 'ACTIVE',
+                    next_run_time: new Date().toISOString() // 立即加入队列
+                }
+            ])
+            .select();
+
+        if (error) {
+            throw error;
+        }
+
+        alert(`🎉 Success! Your DCA plan has been created.\nUser: ${currentAccount.slice(0,6)}...`);
+        // 可选：跳转到排行榜或重置表单
+        // setActiveTab('leaderboard');
+
+    } catch (err: any) {
+        console.error("DCA Error:", err);
+        alert("Failed to create plan: " + err.message);
+    } finally {
+        setIsLoading(false);
+    }
+  };
+
   return (
     // 使用 h-[100dvh] 适应移动端实际高度
     <div className="flex flex-col h-[100dvh] bg-white text-slate-900 font-sans overflow-hidden max-w-md mx-auto shadow-2xl">
@@ -123,10 +209,19 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-sm font-extrabold text-slate-900 leading-tight">Base piggy bank</h1>
-            <div className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-              <span className="text-[10px] font-bold text-slate-500">Connected</span>
-            </div>
+            {account ? (
+                <div className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                    <span className="text-[10px] font-bold text-slate-500 font-mono">
+                        {account.slice(0, 6)}...{account.slice(-4)}
+                    </span>
+                </div>
+            ) : (
+                <div className="flex items-center gap-1 cursor-pointer" onClick={connectWallet}>
+                    <span className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-pulse"></span>
+                    <span className="text-[10px] font-bold text-blue-600">Connect Wallet</span>
+                </div>
+            )}
           </div>
         </div>
         <div className="w-8"></div> 
@@ -155,10 +250,10 @@ export default function App() {
                 
                 {/* ROI Badge */}
                 <div className={`text-right px-2 py-1 rounded-lg border ${calculation.roi >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                   <div className={`text-lg font-black leading-none ${calculation.roi >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                     {calculation.roi > 0 ? '+' : ''}{calculation.roi.toFixed(1)}%
-                   </div>
-                   <div className="text-[9px] font-bold text-slate-500 uppercase">Proj. ROI</div>
+                    <div className={`text-lg font-black leading-none ${calculation.roi >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                      {calculation.roi > 0 ? '+' : ''}{calculation.roi.toFixed(1)}%
+                    </div>
+                    <div className="text-[9px] font-bold text-slate-500 uppercase">Proj. ROI</div>
                 </div>
               </div>
 
@@ -220,13 +315,13 @@ export default function App() {
               
               {/* Stats Row */}
               <div className="flex gap-3 mb-4 flex-none">
-                 <StatBox label="Total Invested" value={`$${Math.round(calculation.totalInvested).toLocaleString()}`} />
-                 <StatBox 
-                   label="Est. Value" 
-                   value={`$${Math.round(calculation.finalValue).toLocaleString()}`}
-                   highlight 
-                   isPositive={calculation.profit >= 0}
-                 />
+                  <StatBox label="Total Invested" value={`$${Math.round(calculation.totalInvested).toLocaleString()}`} />
+                  <StatBox 
+                    label="Est. Value" 
+                    value={`$${Math.round(calculation.finalValue).toLocaleString()}`}
+                    highlight 
+                    isPositive={calculation.profit >= 0}
+                  />
               </div>
 
               {/* Scrollable Inputs Area */}
@@ -280,7 +375,6 @@ export default function App() {
                     unit="Months"
                     onChange={setDuration} 
                   />
-                  {/* 修改点 1: Label 改为 Predict BTC */}
                   <CompactSlider 
                     label="Predict BTC" 
                     value={projectedPrice} 
@@ -293,13 +387,19 @@ export default function App() {
               </div>
 
               {/* Action Button */}
-              {/* 修改点 2: 调整 margin (mt-2 mb-0) 让按钮更靠下，给上面腾空间 */}
               <div className="mt-2 mb-0 pt-2 border-t border-slate-100 flex-none text-center">
                 <button 
-                  className="w-full bg-blue-600 active:bg-blue-700 active:scale-[0.98] transition-all text-white font-bold text-lg py-3 rounded-xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2"
-                  onClick={() => alert("Executing Smart Contract:\n1. Approve USDC\n2. Schedule DCA")}
+                  className={`w-full text-white font-bold text-lg py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all ${
+                      isLoading 
+                      ? 'bg-slate-400 cursor-not-allowed' 
+                      : 'bg-blue-600 active:bg-blue-700 active:scale-[0.98] shadow-blue-600/20'
+                  }`}
+                  onClick={handleStartDCA}
+                  disabled={isLoading}
                 >
-                  Start DCA <ChevronRight size={20} />
+                  {isLoading ? 'Processing...' : (
+                      <>Start DCA <ChevronRight size={20} /></>
+                  )}
                 </button>
                 <p className="text-[10px] text-slate-400 mt-2 px-2 font-medium">
                   This is a non-custodial protocol. We don't hold any user funds.
@@ -309,7 +409,7 @@ export default function App() {
             </div>
           </>
         ) : (
-          /* Leaderboard View (Restored Original UI) */
+          /* Leaderboard View */
           <div className="flex flex-col h-full bg-slate-50 relative">
             
             {/* Scrollable List */}
