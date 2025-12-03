@@ -15,6 +15,16 @@ const CURRENT_ASSET_PRICE = 64000; // 模拟 BTC 当前价格
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // Base USDC
 const CBBTC_ADDRESS = "0xcbB7C0000ab88B473b1f5aFd9ef808440eed33Bf"; // Base cbBTC
 
+// 您的 DCAExecutorV3 合约地址
+const DCA_CONTRACT_ADDRESS = "0x9432f3cf09E63D4B45a8e292Ad4D38d2e677AD0C";
+
+// USDC 标准 ABI (用于授权)
+const ERC20_ABI = [
+  "function approve(address spender, uint256 amount) external returns (bool)",
+  "function allowance(address owner, address spender) external view returns (uint256)",
+  "function decimals() view returns (uint8)"
+];
+
 const FREQUENCIES = [
   { label: 'Daily', days: 1, value: 'Daily' },
   { label: '3 Days', days: 3, value: '3 Days' },
@@ -151,24 +161,40 @@ export default function App() {
     }
 
     try {
-        // --- 步骤 1: 准备数据 ---
         const provider = new ethers.BrowserProvider(window.ethereum);
-        // const signer = await provider.getSigner();
+        const signer = await provider.getSigner();
         
-        // 注意：真实环境中，这里需要调用 USDC 合约进行 approve
-        // const usdc = new ethers.Contract(USDC_ADDRESS, ["function approve(address,uint256)"], signer);
-        // await usdc.approve(YOUR_CONTRACT_ADDRESS, ethers.MaxUint256);
+        // --- 步骤 1: 检查并执行授权 (Approve) ---
+        // 用户必须授权合约扣款，后续才能由后端Bot调用 executeDCA
+        
+        const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, signer);
+        
+        // USDC on Base has 6 decimals
+        const amountToApprove = ethers.MaxUint256; // 简化用户体验，申请无限授权，或者申请 totalInvested
+        
+        console.log("Checking allowance...");
+        const allowance = await usdcContract.allowance(currentAccount, DCA_CONTRACT_ADDRESS);
+        
+        // 如果授权额度不足（比如小于本次单笔金额），则请求授权
+        const requiredAmount = ethers.parseUnits(amount.toString(), 6);
+        
+        if (allowance < requiredAmount) {
+            console.log("Allowance too low, requesting approve...");
+            const approveTx = await usdcContract.approve(DCA_CONTRACT_ADDRESS, amountToApprove);
+            console.log("Approval tx sent:", approveTx.hash);
+            await approveTx.wait(); // 等待链上确认
+            console.log("Approved successfully.");
+        } else {
+            console.log("Allowance sufficient.");
+        }
 
-        // --- 步骤 2: 确保用户存在 (修复 Foreign Key 报错的关键步骤) ---
+        // --- 步骤 2: 确保用户存在 (Supabase) ---
         console.log("Registering/Checking user in Supabase...");
         
         const { error: userError } = await supabase
             .from('users')
             .upsert(
-                { 
-                  wallet_address: currentAccount 
-                  // 如果数据库有其他必填字段，可以在这里添加，例如 created_at
-                }, 
+                { wallet_address: currentAccount }, 
                 { onConflict: 'wallet_address' }
             )
             .select();
@@ -178,9 +204,10 @@ export default function App() {
             throw new Error("Failed to register user: " + userError.message);
         }
 
-        // --- 步骤 3: 计算参数并写入任务 ---
+        // --- 步骤 3: 写入定投任务 (Supabase) ---
+        // 注意：因为合约是 Executor 模式，不需要调用 createPlan，直接存库，后端会读取并执行
         const selectedFreq = FREQUENCIES[freqIndex];
-        const frequencyInSeconds = selectedFreq.days * 24 * 60 * 60; // 天数转秒
+        const frequencyInSeconds = selectedFreq.days * 24 * 60 * 60; 
 
         console.log("Submitting job to Supabase...");
 
@@ -194,7 +221,7 @@ export default function App() {
                     amount_per_trade: Number(amount),
                     frequency_seconds: frequencyInSeconds,
                     status: 'ACTIVE',
-                    next_run_time: new Date().toISOString() // 立即加入队列
+                    next_run_time: new Date().toISOString() // 立即加入队列，后端看到后会调用 executeDCA
                 }
             ])
             .select();
@@ -203,13 +230,17 @@ export default function App() {
             throw error;
         }
 
-        alert(`🎉 Success! Your DCA plan has been created.\nUser: ${currentAccount.slice(0,6)}...`);
-        // 可选：跳转到排行榜或重置表单
+        alert(`🎉 Success! DCA Plan Created.\n\n1. Wallet authorized.\n2. Plan saved to database.\n\nThe system will now automatically execute trades for you.`);
         // setActiveTab('leaderboard');
 
     } catch (err: any) {
         console.error("DCA Error:", err);
-        alert("Failed to create plan: " + err.message);
+        // 处理用户拒绝签名的情况
+        if (err.code === "ACTION_REJECTED" || (err.info && err.info.error && err.info.error.code === 4001)) {
+            alert("User rejected the transaction.");
+        } else {
+            alert("Failed to create plan: " + (err.shortMessage || err.message));
+        }
     } finally {
         setIsLoading(false);
     }
