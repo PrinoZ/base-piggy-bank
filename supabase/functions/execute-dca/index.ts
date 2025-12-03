@@ -9,6 +9,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 // === 配置区域 ===
 const CONTRACT_ADDRESS = "0x9432f3cf09E63D4B45a8e292Ad4D38d2e677AD0C" 
 const RPC_URL = "https://mainnet.base.org" 
+// Factory地址不需要转小写，因为它是硬编码的，但为了保险也可以加
 const AERODROME_FACTORY = "0x420DD381b31aEf6683db6B902084cB0FFECe40Da"
 
 const ABI = [
@@ -49,11 +50,11 @@ Deno.serve(async (req) => {
         
         const amountIn = ethers.parseUnits(job.amount_per_trade.toString(), 6) 
         
-        // --- 核心修复：标准化地址格式 (解决 bad checksum 报错) ---
-        // ethers.getAddress() 会自动处理大小写问题
-        const cleanTokenIn = ethers.getAddress(job.token_in)
-        const cleanTokenOut = ethers.getAddress(job.token_out)
-        const cleanUserAddr = ethers.getAddress(job.user_address)
+        // --- 核心修复：先转小写，再标准化 ---
+        // .toLowerCase() 会清除错误的校验和格式，让 ethers.getAddress 重新计算
+        const cleanTokenIn = ethers.getAddress(job.token_in.toLowerCase())
+        const cleanTokenOut = ethers.getAddress(job.token_out.toLowerCase())
+        const cleanUserAddr = ethers.getAddress(job.user_address.toLowerCase())
         
         const routes = [{
           from: cleanTokenIn,
@@ -61,6 +62,8 @@ Deno.serve(async (req) => {
           stable: false,
           factory: AERODROME_FACTORY
         }]
+
+        console.log("Sending tx with routes:", JSON.stringify(routes))
 
         const tx = await contract.executeDCA(
           cleanUserAddr, 
