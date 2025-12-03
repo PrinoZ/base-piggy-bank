@@ -49,7 +49,8 @@ Deno.serve(async (req) => {
         
         const amountIn = ethers.parseUnits(job.amount_per_trade.toString(), 6) 
         
-        // --- 核心修复：标准化地址格式 ---
+        // --- 核心修复：标准化地址格式 (解决 bad checksum 报错) ---
+        // ethers.getAddress() 会自动处理大小写问题
         const cleanTokenIn = ethers.getAddress(job.token_in)
         const cleanTokenOut = ethers.getAddress(job.token_out)
         const cleanUserAddr = ethers.getAddress(job.user_address)
