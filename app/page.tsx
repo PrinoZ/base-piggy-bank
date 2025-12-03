@@ -5,20 +5,20 @@ import { supabase } from '@/lib/supabaseClient';
 import { ethers } from 'ethers'; 
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank } from 'lucide-react';
+import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank, LayoutGrid, XCircle } from 'lucide-react';
 
 // ==========================================
 //              CONSTANTS & TYPES
 // ==========================================
 
-const CURRENT_ASSET_PRICE = 64000; // 模拟 BTC 当前价格
-const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // Base USDC
-const CBBTC_ADDRESS = "0xcbB7C0000ab88B473b1f5aFd9ef808440eed33Bf"; // Base cbBTC
+const BASE_CHAIN_ID = '0x2105'; // 8453 in hex
+const BASE_RPC_URL = 'https://mainnet.base.org';
 
-// 您的 DCAExecutorV3 合约地址
+const CURRENT_ASSET_PRICE = 64000; 
+const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; 
+const CBBTC_ADDRESS = "0xcbB7C0000ab88B473b1f5aFd9ef808440eed33Bf"; 
 const DCA_CONTRACT_ADDRESS = "0x9432f3cf09E63D4B45a8e292Ad4D38d2e677AD0C";
 
-// USDC 标准 ABI (用于授权)
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) external returns (bool)",
   "function allowance(address owner, address spender) external view returns (uint256)",
@@ -32,7 +32,6 @@ const FREQUENCIES = [
   { label: 'Bi-Weekly', days: 14, value: 'Bi-Weekly' }
 ];
 
-// 辅助函数：生成未来日期标签
 const getFutureDateLabel = (monthsToAdd: number) => {
   const date = new Date();
   date.setMonth(date.getMonth() + monthsToAdd);
@@ -65,7 +64,6 @@ const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
       max={max}
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      // 保持 h-3 的滑块高度
       className="w-full h-3 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
     />
   </div>
@@ -77,40 +75,41 @@ const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
 
 export default function App() {
   // --- State ---
-  const [activeTab, setActiveTab] = useState('strategy'); // 'strategy' | 'leaderboard'
-  const [account, setAccount] = useState(''); // 存储用户钱包地址
-  const [isLoading, setIsLoading] = useState(false); // 加载状态
+  const [activeTab, setActiveTab] = useState('strategy'); // 'strategy' | 'assets' | 'leaderboard'
+  const [account, setAccount] = useState(''); 
+  const [isLoading, setIsLoading] = useState(false); 
+  const [activeJob, setActiveJob] = useState(null); // 存储当前的定投任务
   
   // Strategy State
   const [amount, setAmount] = useState<number | ''>(100);
-  const [freqIndex, setFreqIndex] = useState(2); // Default Weekly (Index 2)
-  const [duration, setDuration] = useState(12); // Months
+  const [freqIndex, setFreqIndex] = useState(2); 
+  const [duration, setDuration] = useState(12); 
   const [projectedPrice, setProjectedPrice] = useState(85000);
   
-  // Calculation Results
+  // --- Effects ---
+  useEffect(() => {
+    if (account) {
+      fetchActiveJob();
+    }
+  }, [account]);
+
+  // --- Calculation Results ---
   const calculation = useMemo(() => {
     const safeAmount = amount === '' ? 0 : amount;
-    
     const selectedFreq = FREQUENCIES[freqIndex];
     const investmentsPerMonth = 30 / selectedFreq.days; 
     const monthlyAmount = safeAmount * investmentsPerMonth;
     const totalInvested = monthlyAmount * duration;
     
-    // Generate Chart Data
     const data = [];
     let accumulatedCoins = 0;
-    
     const startPrice = CURRENT_ASSET_PRICE;
     const endPrice = projectedPrice;
     
     for (let i = 0; i <= duration; i++) {
       const progress = i / duration;
       const currentPrice = startPrice + (endPrice - startPrice) * progress;
-      
-      if (i > 0) {
-        accumulatedCoins += monthlyAmount / currentPrice;
-      }
-      
+      if (i > 0) accumulatedCoins += monthlyAmount / currentPrice;
       data.push({
         month: i,
         dateLabel: getFutureDateLabel(i),
@@ -129,128 +128,152 @@ export default function App() {
 
   // --- Functions ---
 
-  // 1. 连接钱包
+  const fetchActiveJob = async () => {
+    try {
+      const { data } = await supabase
+        .from('dca_jobs')
+        .select('*')
+        .eq('user_address', account)
+        .eq('status', 'ACTIVE')
+        .maybeSingle();
+      setActiveJob(data || null);
+    } catch (error) {
+      console.error("Error fetching job:", error);
+    }
+  };
+
+  const switchToBase = async () => {
+    if (!window.ethereum) return;
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: BASE_CHAIN_ID }],
+      });
+    } catch (switchError: any) {
+      if (switchError.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+                chainId: BASE_CHAIN_ID,
+                chainName: 'Base Mainnet',
+                rpcUrls: [BASE_RPC_URL],
+                nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+                blockExplorerUrls: ['https://basescan.org'],
+            }],
+          });
+        } catch (addError) { throw new Error('Please manually switch to Base network.'); }
+      } else { throw new Error('Please switch to Base network.'); }
+    }
+  };
+
   const connectWallet = async () => {
       if (typeof window.ethereum !== 'undefined') {
           try {
               const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
               setAccount(accounts[0]);
               return accounts[0];
-          } catch (error) {
-              console.error(error);
-              return null;
-          }
+          } catch (error) { return null; }
       } else {
           alert('Please install Coinbase Wallet or MetaMask');
           return null;
       }
   };
 
-  // 2. 核心逻辑：开始定投
   const handleStartDCA = async () => {
     setIsLoading(true);
     let currentAccount = account;
 
-    // A. 确保钱包已连接
-    if (!currentAccount) {
-        currentAccount = await connectWallet();
-        if (!currentAccount) {
-            setIsLoading(false);
-            return;
-        }
-    }
-
     try {
+        if (!window.ethereum) throw new Error("No wallet found");
+        if (!currentAccount) {
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            if (!accounts || accounts.length === 0) throw new Error("Wallet not connected");
+            currentAccount = accounts[0];
+            setAccount(currentAccount);
+        }
+
+        await switchToBase(); // 强制切换网络
+
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer = await provider.getSigner();
-        
-        // --- 步骤 1: 检查并执行授权 (Approve) ---
-        // 用户必须授权合约扣款，后续才能由后端Bot调用 executeDCA
-        
         const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, signer);
         
-        // USDC on Base has 6 decimals
-        const amountToApprove = ethers.MaxUint256; // 简化用户体验，申请无限授权，或者申请 totalInvested
-        
+        // 1. Check Allowance
         console.log("Checking allowance...");
         const allowance = await usdcContract.allowance(currentAccount, DCA_CONTRACT_ADDRESS);
-        
-        // 如果授权额度不足（比如小于本次单笔金额），则请求授权
         const requiredAmount = ethers.parseUnits(amount.toString(), 6);
         
         if (allowance < requiredAmount) {
-            console.log("Allowance too low, requesting approve...");
-            const approveTx = await usdcContract.approve(DCA_CONTRACT_ADDRESS, amountToApprove);
+            const approveTx = await usdcContract.approve(DCA_CONTRACT_ADDRESS, ethers.MaxUint256);
             console.log("Approval tx sent:", approveTx.hash);
-            await approveTx.wait(); // 等待链上确认
-            console.log("Approved successfully.");
-        } else {
-            console.log("Allowance sufficient.");
+            await approveTx.wait(); 
         }
 
-        // --- 步骤 2: 确保用户存在 (Supabase) ---
-        console.log("Registering/Checking user in Supabase...");
-        
+        // 2. Register User
         const { error: userError } = await supabase
             .from('users')
-            .upsert(
-                { wallet_address: currentAccount }, 
-                { onConflict: 'wallet_address' }
-            )
-            .select();
+            .upsert({ wallet_address: currentAccount }, { onConflict: 'wallet_address' });
+        if (userError) console.error("Supabase User Error:", userError);
 
-        if (userError) {
-            console.error("User Registration Error:", userError);
-            throw new Error("Failed to register user: " + userError.message);
-        }
-
-        // --- 步骤 3: 写入定投任务 (Supabase) ---
-        // 注意：因为合约是 Executor 模式，不需要调用 createPlan，直接存库，后端会读取并执行
+        // 3. Create Job
         const selectedFreq = FREQUENCIES[freqIndex];
         const frequencyInSeconds = selectedFreq.days * 24 * 60 * 60; 
 
-        console.log("Submitting job to Supabase...");
-
-        const { data, error } = await supabase
+        const { error: jobError } = await supabase
             .from('dca_jobs')
-            .insert([
-                {
-                    user_address: currentAccount,
-                    token_in: USDC_ADDRESS,
-                    token_out: CBBTC_ADDRESS,
-                    amount_per_trade: Number(amount),
-                    frequency_seconds: frequencyInSeconds,
-                    status: 'ACTIVE',
-                    next_run_time: new Date().toISOString() // 立即加入队列，后端看到后会调用 executeDCA
-                }
-            ])
-            .select();
+            .insert([{
+                user_address: currentAccount,
+                token_in: USDC_ADDRESS,
+                token_out: CBBTC_ADDRESS,
+                amount_per_trade: Number(amount),
+                frequency_seconds: frequencyInSeconds,
+                status: 'ACTIVE',
+                next_run_time: new Date().toISOString()
+            }]);
 
-        if (error) {
-            throw error;
-        }
+        if (jobError) throw jobError;
 
-        alert(`🎉 Success! DCA Plan Created.\n\n1. Wallet authorized.\n2. Plan saved to database.\n\nThe system will now automatically execute trades for you.`);
-        // setActiveTab('leaderboard');
+        alert(`🎉 Success! DCA Plan Created.`);
+        await fetchActiveJob(); // 刷新数据
+        setActiveTab('assets'); // 自动跳转到资产页
 
     } catch (err: any) {
         console.error("DCA Error:", err);
-        // 处理用户拒绝签名的情况
-        if (err.code === "ACTION_REJECTED" || (err.info && err.info.error && err.info.error.code === 4001)) {
-            alert("User rejected the transaction.");
-        } else {
-            alert("Failed to create plan: " + (err.shortMessage || err.message));
+        if (err.code !== "ACTION_REJECTED" && err.info?.error?.code !== 4001) {
+             alert("Error: " + (err.shortMessage || err.message));
         }
     } finally {
         setIsLoading(false);
     }
   };
 
+  const handleCancelPlan = async (jobId: any) => {
+    const confirmCancel = window.confirm("Are you sure you want to stop this plan?");
+    if (!confirmCancel) return;
+
+    setIsLoading(true);
+    try {
+      const { error } = await supabase
+        .from('dca_jobs')
+        .update({ status: 'CANCELLED' })
+        .eq('id', jobId);
+
+      if (error) throw error;
+
+      alert("Plan cancelled successfully.");
+      fetchActiveJob(); // 刷新列表
+    } catch (error) {
+      alert("Failed to cancel plan");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    // 使用 h-[100dvh] 适应移动端实际高度
     <div className="flex flex-col h-[100dvh] bg-white text-slate-900 font-sans overflow-hidden max-w-md mx-auto shadow-2xl">
       
-      {/* --- 1. Compact Header (Fixed) --- */}
+      {/* --- Header --- */}
       <header className="flex-none h-12 px-4 border-b border-slate-200 flex justify-between items-center bg-white z-10">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold shadow-md">
@@ -276,16 +299,14 @@ export default function App() {
         <div className="w-8"></div> 
       </header>
 
-      {/* --- 2. Main Content (Auto-fill) --- */}
+      {/* --- Main Content --- */}
       <main className="flex-1 flex flex-col min-h-0 bg-white">
         
-        {activeTab === 'strategy' ? (
+        {/* === TAB 1: STRATEGY (计算器 & 创建) === */}
+        {activeTab === 'strategy' && (
           <>
-            {/* Chart Section */}
-            {/* 高度 32% */}
             <div className="flex-none h-[32%] w-full bg-slate-50 border-b border-slate-200 flex flex-col relative">
-              
-              {/* Header Stats */}
+              {/* Stats Header */}
               <div className="px-5 pt-4 pb-1 flex-none flex justify-between items-start">
                 <div>
                     <div className="flex items-baseline gap-1">
@@ -296,8 +317,6 @@ export default function App() {
                     </div>
                     <div className="text-[10px] font-bold text-slate-400 mt-1">Accumulated Assets</div>
                 </div>
-                
-                {/* ROI Badge */}
                 <div className={`text-right px-2 py-1 rounded-lg border ${calculation.roi >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
                     <div className={`text-lg font-black leading-none ${calculation.roi >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                       {calculation.roi > 0 ? '+' : ''}{calculation.roi.toFixed(1)}%
@@ -305,11 +324,9 @@ export default function App() {
                     <div className="text-[9px] font-bold text-slate-500 uppercase">Proj. ROI</div>
                 </div>
               </div>
-
-              {/* Chart Container */}
+              {/* Chart */}
               <div className="flex-1 min-h-0 w-full pt-2">
                 <ResponsiveContainer width="100%" height="100%">
-                  {/* right margin 35 */}
                   <AreaChart data={calculation.data} margin={{ top: 5, right: 35, left: 20, bottom: 5 }}>
                     <defs>
                       <linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1">
@@ -318,65 +335,22 @@ export default function App() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                    
-                    <XAxis 
-                        dataKey="dateLabel" 
-                        axisLine={false}
-                        tickLine={false}
-                        tick={{ fontSize: 10, fill: '#94a3b8' }}
-                        interval="preserveStartEnd"
-                        minTickGap={30}
-                    />
-                    
-                    <YAxis 
-                        hide={false}
-                        axisLine={false}
-                        tickLine={false}
-                        width={35}
-                        tick={{ fontSize: 10, fill: '#94a3b8' }}
-                        tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(0)}k` : val}
-                    />
-                    
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px', fontSize: '11px', color: 'white', padding: '8px' }}
-                      itemStyle={{ padding: 0 }}
-                      formatter={(val: any) => [`${Number(val).toFixed(4)}`, 'cbBTC']}
-                      labelFormatter={(label) => `Date: ${label}`}
-                      labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
-                    />
-                    
-                    <Area 
-                      type="monotone" 
-                      dataKey="coins" 
-                      stroke="#2563EB" 
-                      strokeWidth={3} 
-                      fillOpacity={1} 
-                      fill="url(#colorCoins)" 
-                      animationDuration={1000}
-                    />
+                    <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" minTickGap={30} />
+                    <YAxis hide={false} axisLine={false} tickLine={false} width={35} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(0)}k` : val} />
+                    <Tooltip contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px', fontSize: '11px', color: 'white', padding: '8px' }} itemStyle={{ padding: 0 }} formatter={(val: any) => [`${Number(val).toFixed(4)}`, 'cbBTC']} labelFormatter={(label) => `Date: ${label}`} labelStyle={{ color: '#94a3b8', marginBottom: '4px' }} />
+                    <Area type="monotone" dataKey="coins" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCoins)" animationDuration={1000} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* Controls Section */}
             <div className="flex-1 flex flex-col p-4 bg-white min-h-0">
-              
-              {/* Stats Row */}
               <div className="flex gap-3 mb-4 flex-none">
                   <StatBox label="Total Invested" value={`$${Math.round(calculation.totalInvested).toLocaleString()}`} />
-                  <StatBox 
-                    label="Est. Value" 
-                    value={`$${Math.round(calculation.finalValue).toLocaleString()}`}
-                    highlight 
-                    isPositive={calculation.profit >= 0}
-                  />
+                  <StatBox label="Est. Value" value={`$${Math.round(calculation.finalValue).toLocaleString()}`} highlight isPositive={calculation.profit >= 0} />
               </div>
 
-              {/* Scrollable Inputs Area */}
               <div className="flex-1 overflow-y-auto min-h-0 space-y-4 pr-1">
-                
-                {/* 1. Amount Input */}
                 <div>
                   <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
                     <span>Amount per Trade</span>
@@ -384,84 +358,100 @@ export default function App() {
                   </label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">$</span>
-                    <input 
-                      type="number"
-                      value={amount}
-                      placeholder="0"
-                      onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                      className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-7 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all"
-                    />
+                    <input type="number" value={amount} placeholder="0" onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-7 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" />
                   </div>
                 </div>
-
-                {/* 2. Frequency Tabs */}
                 <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">Frequency</label>
                     <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-lg">
                       {FREQUENCIES.map((freq, idx) => (
-                        <button
-                          key={freq.value}
-                          onClick={() => setFreqIndex(idx)}
-                          className={`py-2 rounded-md text-[10px] font-bold transition-all leading-tight ${
-                            freqIndex === idx 
-                            ? 'bg-white text-blue-700 shadow-sm border border-slate-100' 
-                            : 'text-slate-500 hover:text-slate-700'
-                          }`}
-                        >
+                        <button key={freq.value} onClick={() => setFreqIndex(idx)} className={`py-2 rounded-md text-[10px] font-bold transition-all leading-tight ${freqIndex === idx ? 'bg-white text-blue-700 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'}`}>
                           {freq.label}
                         </button>
                       ))}
                     </div>
                 </div>
-
-                {/* 3. Sliders */}
                 <div className="space-y-3 pt-1">
-                  <CompactSlider 
-                    label="Duration" 
-                    value={duration} 
-                    min={1} 
-                    max={48} 
-                    unit="Months"
-                    onChange={setDuration} 
-                  />
-                  <CompactSlider 
-                    label="Predict BTC" 
-                    value={projectedPrice} 
-                    min={CURRENT_ASSET_PRICE} 
-                    max={200000} 
-                    unit="$"
-                    onChange={setProjectedPrice} 
-                  />
+                  <CompactSlider label="Duration" value={duration} min={1} max={48} unit="Months" onChange={setDuration} />
+                  <CompactSlider label="Predict BTC" value={projectedPrice} min={CURRENT_ASSET_PRICE} max={200000} unit="$" onChange={setProjectedPrice} />
                 </div>
               </div>
 
-              {/* Action Button */}
               <div className="mt-2 mb-0 pt-2 border-t border-slate-100 flex-none text-center">
-                <button 
-                  className={`w-full text-white font-bold text-lg py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all ${
-                      isLoading 
-                      ? 'bg-slate-400 cursor-not-allowed' 
-                      : 'bg-blue-600 active:bg-blue-700 active:scale-[0.98] shadow-blue-600/20'
-                  }`}
-                  onClick={handleStartDCA}
-                  disabled={isLoading}
-                >
-                  {isLoading ? 'Processing...' : (
-                      <>Start DCA <ChevronRight size={20} /></>
-                  )}
+                <button className={`w-full text-white font-bold text-lg py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 active:bg-blue-700 active:scale-[0.98] shadow-blue-600/20'}`} onClick={handleStartDCA} disabled={isLoading}>
+                  {isLoading ? 'Processing...' : (<>Start DCA <ChevronRight size={20} /></>)}
                 </button>
-                <p className="text-[10px] text-slate-400 mt-2 px-2 font-medium">
-                  This is a non-custodial protocol. We don't hold any user funds.
-                </p>
+                <p className="text-[10px] text-slate-400 mt-2 px-2 font-medium">This is a non-custodial protocol. We don't hold any user funds.</p>
               </div>
-
             </div>
           </>
-        ) : (
-          /* Leaderboard View */
+        )}
+
+        {/* === TAB 2: ASSETS (我的定投卡片) === */}
+        {activeTab === 'assets' && (
+            <div className="flex flex-col h-full bg-slate-50 p-4 overflow-y-auto">
+                <h2 className="text-lg font-black text-slate-900 mb-4 px-1">My Active Plans</h2>
+                
+                {activeJob ? (
+                    <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-3 opacity-10">
+                            <Activity size={80} className="text-blue-600" />
+                        </div>
+                        
+                        <div className="flex items-center gap-3 mb-4 relative z-10">
+                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                                <Activity size={20} />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-extrabold text-slate-900">USDC <span className="text-slate-400 mx-1">→</span> cbBTC</h3>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                    <span className="text-[10px] font-bold text-green-600 uppercase tracking-wide">Active Running</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 mb-5 relative z-10">
+                            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Amount / Trade</p>
+                                <p className="text-lg font-black text-slate-900">${activeJob.amount_per_trade}</p>
+                            </div>
+                            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Next Run</p>
+                                <p className="text-sm font-bold text-slate-700 mt-1">
+                                    {new Date(activeJob.next_run_time).toLocaleDateString()}
+                                </p>
+                            </div>
+                        </div>
+
+                        <button 
+                            onClick={() => handleCancelPlan(activeJob.id)}
+                            disabled={isLoading}
+                            className="w-full py-3 rounded-xl border-2 border-red-50 bg-red-50/50 text-red-600 font-bold text-sm hover:bg-red-100 hover:border-red-200 transition-all flex items-center justify-center gap-2 relative z-10"
+                        >
+                            <XCircle size={16} />
+                            {isLoading ? 'Processing...' : 'Stop & Cancel Plan'}
+                        </button>
+                    </div>
+                ) : (
+                    <div className="flex flex-col items-center justify-center h-[60%] text-slate-400">
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                            <LayoutGrid size={32} className="opacity-50" />
+                        </div>
+                        <p className="text-sm font-bold">No active plans</p>
+                        <button onClick={() => setActiveTab('strategy')} className="mt-4 text-blue-600 text-xs font-bold hover:underline">
+                            Create your first plan
+                        </button>
+                    </div>
+                )}
+
+                {/* 这里未来可以 .map() 渲染更多 activeJob 如果你改成返回数组的话 */}
+            </div>
+        )}
+
+        {/* === TAB 3: LEADERBOARD === */}
+        {activeTab === 'leaderboard' && (
           <div className="flex flex-col h-full bg-slate-50 relative">
-            
-            {/* Scrollable List */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-20">
               <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl p-5 text-white shadow-lg mb-4">
                 <div className="flex justify-between items-start">
@@ -482,12 +472,10 @@ export default function App() {
                   </div>
                 </div>
               </div>
-
               <div className="flex items-center justify-between px-2 pb-1">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Global Leaderboard</p>
                   <span className="text-[10px] text-blue-700 font-bold bg-blue-50 px-2 py-1 rounded-full">Updated 1m ago</span>
               </div>
-              
               <div className="space-y-2">
                 {[1,2,3,4,5,6,7,8,9,10].map((i) => (
                   <div key={i} className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm">
@@ -507,8 +495,6 @@ export default function App() {
                 ))}
               </div>
             </div>
-
-            {/* Fixed Bottom Stats for Rank Page */}
             <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-10">
                <div className="flex justify-between items-center max-w-md mx-auto">
                  <div className="flex items-center gap-2">
@@ -527,32 +513,34 @@ export default function App() {
                  </div>
                </div>
             </div>
-
           </div>
         )}
       </main>
 
-      {/* --- 3. Bottom Navigation Bar --- */}
+      {/* --- Bottom Navigation --- */}
       <nav className="flex-none bg-white border-t border-slate-200 pb-safe z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-        {/* 高度 h-16 */}
         <div className="flex justify-around items-center h-16">
-          <button 
-            onClick={() => setActiveTab('strategy')}
-            className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'strategy' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
-          >
+          
+          <button onClick={() => setActiveTab('strategy')} className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'strategy' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
             <BarChart2 size={24} strokeWidth={activeTab === 'strategy' ? 3 : 2} />
             <span className="text-[10px] font-bold uppercase tracking-wide">Strategy</span>
           </button>
           
           <div className="w-px h-8 bg-slate-100"></div>
 
-          <button 
-            onClick={() => setActiveTab('leaderboard')}
-            className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'leaderboard' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
-          >
+          {/* 新增的 Assets 按钮 */}
+          <button onClick={() => setActiveTab('assets')} className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'assets' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
+            <Wallet size={24} strokeWidth={activeTab === 'assets' ? 3 : 2} />
+            <span className="text-[10px] font-bold uppercase tracking-wide">Assets</span>
+          </button>
+
+          <div className="w-px h-8 bg-slate-100"></div>
+
+          <button onClick={() => setActiveTab('leaderboard')} className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'leaderboard' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
             <Layers size={24} strokeWidth={activeTab === 'leaderboard' ? 3 : 2} />
             <span className="text-[10px] font-bold uppercase tracking-wide">Rank</span>
           </button>
+
         </div>
       </nav>
 
