@@ -2,17 +2,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { ethers } from 'https://esm.sh/ethers@6.7.0'
 
-// 环境变量读取 (需要在 Supabase 后台设置)
 const PRIVATE_KEY = Deno.env.get('BACKEND_WALLET_PRIVATE_KEY')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 // === 配置区域 ===
-// 您的 DCA 合约地址
 const CONTRACT_ADDRESS = "0x9432f3cf09E63D4B45a8e292Ad4D38d2e677AD0C" 
 const RPC_URL = "https://mainnet.base.org" 
-
-// Base Aerodrome Factory 地址 (必须填对，否则无法交易)
 const AERODROME_FACTORY = "0x420DD381b31aEf6683db6B902084cB0FFECe40Da"
 
 const ABI = [
@@ -21,14 +17,13 @@ const ABI = [
 
 Deno.serve(async (req) => {
   try {
-    // 1. 初始化数据库连接
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     
-    // 2. 查找当前需要执行的任务
+    // 查找 ACTIVE 且时间已到的任务
     const { data: jobs, error } = await supabase
       .from('dca_jobs')
       .select('*')
-      .lte('next_run_time', new Date().toISOString()) // next_run_time <= 现在
+      .lte('next_run_time', new Date().toISOString())
       .eq('status', 'ACTIVE')
 
     if (error) {
@@ -42,41 +37,41 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${jobs.length} jobs to execute`)
 
-    // 3. 初始化区块链连接
     const provider = new ethers.JsonRpcProvider(RPC_URL)
     const wallet = new ethers.Wallet(PRIVATE_KEY, provider)
     const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, wallet)
 
     const results = []
 
-    // 4. 循环执行任务
     for (const job of jobs) {
       try {
         console.log(`Processing job ${job.id} for user: ${job.user_address}`)
         
-        // 参数转换：USDC 是 6 位精度
         const amountIn = ethers.parseUnits(job.amount_per_trade.toString(), 6) 
         
-        // 构建路由 (USDC -> cbBTC)
+        // --- 核心修复：标准化地址格式 ---
+        const cleanTokenIn = ethers.getAddress(job.token_in)
+        const cleanTokenOut = ethers.getAddress(job.token_out)
+        const cleanUserAddr = ethers.getAddress(job.user_address)
+        
         const routes = [{
-          from: job.token_in,
-          to: job.token_out,
-          stable: false, // 波动资产选 false
-          factory: AERODROME_FACTORY // 关键修复：必须填写真实 Factory 地址
+          from: cleanTokenIn,
+          to: cleanTokenOut,
+          stable: false,
+          factory: AERODROME_FACTORY
         }]
 
-        // 发起交易
         const tx = await contract.executeDCA(
-          job.user_address, 
+          cleanUserAddr, 
           amountIn, 
-          0, // minAmountOut
-          ethers.ZeroAddress, // referrer
+          0, 
+          ethers.ZeroAddress, 
           routes
         )
         
         console.log(`Tx sent: ${tx.hash}`)
         
-        // 5. 更新数据库：推迟下一次运行时间
+        // 更新下一次运行时间
         const nextRun = new Date(new Date().getTime() + job.frequency_seconds * 1000)
         
         await supabase
