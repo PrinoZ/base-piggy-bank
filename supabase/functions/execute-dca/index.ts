@@ -7,10 +7,10 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 // === 配置区域 ===
-const CONTRACT_ADDRESS = "0x9432f3cf09E63D4B45a8e292Ad4D38d2e677AD0C" 
+const CONTRACT_ADDRESS = "0x9432f3cf09e63d4b45a8e292ad4d38d2e677ad0c" 
 const RPC_URL = "https://mainnet.base.org" 
 // Factory地址不需要转小写，因为它是硬编码的，但为了保险也可以加
-const AERODROME_FACTORY = "0x420DD381b31aEf6683db6B902084cB0FFECe40Da"
+const AERODROME_FACTORY = "0x420dd381b31aef6683db6b902084cb0ffece40da"
 
 const ABI = [
   "function executeDCA(address user, uint256 amountIn, uint256 minAmountOut, address referrer, tuple(address from, address to, bool stable, address factory)[] routes) external"
