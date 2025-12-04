@@ -42,13 +42,16 @@ Deno.serve(async (req) => {
     const wallet = new ethers.Wallet(PRIVATE_KEY, provider)
     const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, wallet)
 
-    // === 核心修改：Gas 价格极致优化 (双重封顶) ===
+    // === 核心修改：Gas 价格 + 用量三重锁定 ===
     // 1. maxPriorityFeePerGas: 给矿工的小费 (0.01 Gwei)
     // 2. maxFeePerGas: 总价封顶 (0.1 Gwei)
-    // 这样设置后，Ethers.js 检查余额时就只需检查是否够付 0.1 Gwei 的单价，而不是 1.0 Gwei
+    // 3. gasLimit: 强制指定用量 (300,000)
+    //    计算：300,000 * 0.1 Gwei = 0.00003 ETH
+    //    只要你的余额 > 0.00003 ETH (约 $0.11)，这笔交易就能发出去！
     const txOptions = {
         maxPriorityFeePerGas: ethers.parseUnits('0.01', 'gwei'),
-        maxFeePerGas: ethers.parseUnits('0.1', 'gwei') 
+        maxFeePerGas: ethers.parseUnits('0.1', 'gwei'),
+        gasLimit: 300000 // <--- 新增：彻底跳过预估，强行执行
     };
 
     const results = []
@@ -81,7 +84,7 @@ Deno.serve(async (req) => {
           0, 
           ethers.ZeroAddress, 
           routes,
-          txOptions // <--- 应用双重封顶配置
+          txOptions // <--- 应用三重锁定配置
         )
         
         console.log(`Tx sent: ${tx.hash}`)
