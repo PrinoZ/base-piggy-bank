@@ -7,9 +7,9 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 // === 配置区域 ===
+// 【依然使用旧合约地址】
 const CONTRACT_ADDRESS = "0x9432f3cf09e63d4b45a8e292ad4d38d2e677ad0c" 
 const RPC_URL = "https://mainnet.base.org" 
-// Factory地址不需要转小写，因为它是硬编码的，但为了保险也可以加
 const AERODROME_FACTORY = "0x420dd381b31aef6683db6b902084cb0ffece40da"
 
 const ABI = [
@@ -42,6 +42,13 @@ Deno.serve(async (req) => {
     const wallet = new ethers.Wallet(PRIVATE_KEY, provider)
     const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, wallet)
 
+    // === 核心修改：Gas 价格优化配置 ===
+    // 强制设置极低的小费 (Priority Fee)
+    // 这将解决你刚才看到的 1 Gwei 高昂费用的问题，降至约 0.01 Gwei
+    const txOptions = {
+        maxPriorityFeePerGas: ethers.parseUnits('0.01', 'gwei') 
+    };
+
     const results = []
 
     for (const job of jobs) {
@@ -50,8 +57,7 @@ Deno.serve(async (req) => {
         
         const amountIn = ethers.parseUnits(job.amount_per_trade.toString(), 6) 
         
-        // --- 核心修复：先转小写，再标准化 ---
-        // .toLowerCase() 会清除错误的校验和格式，让 ethers.getAddress 重新计算
+        // 地址清洗
         const cleanTokenIn = ethers.getAddress(job.token_in.toLowerCase())
         const cleanTokenOut = ethers.getAddress(job.token_out.toLowerCase())
         const cleanUserAddr = ethers.getAddress(job.user_address.toLowerCase())
@@ -65,12 +71,15 @@ Deno.serve(async (req) => {
 
         console.log("Sending tx with routes:", JSON.stringify(routes))
 
+        // === 发送交易 ===
+        // 将 txOptions 作为最后一个参数传入，强制降低 Gas Price
         const tx = await contract.executeDCA(
           cleanUserAddr, 
           amountIn, 
           0, 
           ethers.ZeroAddress, 
-          routes
+          routes,
+          txOptions // <--- 应用省钱配置
         )
         
         console.log(`Tx sent: ${tx.hash}`)
