@@ -42,11 +42,13 @@ Deno.serve(async (req) => {
     const wallet = new ethers.Wallet(PRIVATE_KEY, provider)
     const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, wallet)
 
-    // === 核心修改：Gas 价格优化配置 ===
-    // 强制设置极低的小费 (Priority Fee)
-    // 这将解决你刚才看到的 1 Gwei 高昂费用的问题，降至约 0.01 Gwei
+    // === 核心修改：Gas 价格极致优化 (双重封顶) ===
+    // 1. maxPriorityFeePerGas: 给矿工的小费 (0.01 Gwei)
+    // 2. maxFeePerGas: 总价封顶 (0.1 Gwei)
+    // 这样设置后，Ethers.js 检查余额时就只需检查是否够付 0.1 Gwei 的单价，而不是 1.0 Gwei
     const txOptions = {
-        maxPriorityFeePerGas: ethers.parseUnits('0.01', 'gwei') 
+        maxPriorityFeePerGas: ethers.parseUnits('0.01', 'gwei'),
+        maxFeePerGas: ethers.parseUnits('0.1', 'gwei') 
     };
 
     const results = []
@@ -72,14 +74,14 @@ Deno.serve(async (req) => {
         console.log("Sending tx with routes:", JSON.stringify(routes))
 
         // === 发送交易 ===
-        // 将 txOptions 作为最后一个参数传入，强制降低 Gas Price
+        // 将 txOptions 作为最后一个参数传入
         const tx = await contract.executeDCA(
           cleanUserAddr, 
           amountIn, 
           0, 
           ethers.ZeroAddress, 
           routes,
-          txOptions // <--- 应用省钱配置
+          txOptions // <--- 应用双重封顶配置
         )
         
         console.log(`Tx sent: ${tx.hash}`)
