@@ -16,7 +16,8 @@ const BASE_RPC_URL = 'https://mainnet.base.org';
 
 const CURRENT_ASSET_PRICE = 64000; 
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; 
-const CBBTC_ADDRESS = "0xcbB7C0000ab88B473b1f5aFd9ef808440eed33Bf"; 
+// 修复：常量改为全小写，防止生成脏数据
+const CBBTC_ADDRESS = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"; 
 const DCA_CONTRACT_ADDRESS = "0x9432f3cf09E63D4B45a8e292Ad4D38d2e677AD0C";
 
 const ERC20_ABI = [
@@ -69,7 +70,6 @@ const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
   </div>
 );
 
-// --- 新增：提取定投卡片组件，用于复用 ---
 const PlanCard = ({ job, isTemplate = false, onCancel, isLoading }: any) => {
     return (
         <div className={`bg-white rounded-2xl p-5 border border-slate-200 shadow-sm relative overflow-hidden transition-all ${isTemplate ? 'opacity-40 blur-[2px] grayscale' : ''}`}>
@@ -178,16 +178,28 @@ export default function App() {
 
   // --- Functions ---
 
+  // 修复：fetchActiveJob 强制使用小写地址查询
   const fetchActiveJob = async (userAddr = account) => {
     if (!userAddr) return;
     try {
-      const { data } = await supabase
+      const normalizedAddr = userAddr.toLowerCase(); // <--- 关键修复
+
+      const { data, error } = await supabase
         .from('dca_jobs')
         .select('*')
-        .eq('user_address', userAddr)
+        .eq('user_address', normalizedAddr) 
         .eq('status', 'ACTIVE')
         .maybeSingle();
-      setActiveJob(data || null);
+      
+      if (error) {
+          console.error("Supabase Read Error:", error);
+      }
+
+      if (data) {
+          setActiveJob(data);
+      } else {
+          setActiveJob(null);
+      }
     } catch (error) {
       console.error("Error fetching job:", error);
     }
@@ -221,7 +233,6 @@ export default function App() {
   const connectWallet = async (silent = false) => {
       if (typeof window.ethereum !== 'undefined') {
           try {
-              // silent 模式只获取，不弹窗（除非未授权）
               const method = silent ? 'eth_accounts' : 'eth_requestAccounts';
               const accounts = await window.ethereum.request({ method });
               if (accounts[0]) {
@@ -235,6 +246,7 @@ export default function App() {
       return null;
   };
 
+  // 修复：handleStartDCA 强制小写存储，并立即返回数据
   const handleStartDCA = async () => {
     setIsLoading(true);
     let currentAccount = account;
@@ -247,6 +259,8 @@ export default function App() {
             currentAccount = accounts[0];
             setAccount(currentAccount);
         }
+
+        const normalizedAccount = currentAccount.toLowerCase(); // <--- 关键修复
 
         await switchToBase(); 
 
@@ -279,31 +293,39 @@ Your first trade will happen immediately via our bot.`;
         // 3. Register User & Job
         const { error: userError } = await supabase
             .from('users')
-            .upsert({ wallet_address: currentAccount }, { onConflict: 'wallet_address' });
+            .upsert({ wallet_address: normalizedAccount }, { onConflict: 'wallet_address' });
         if (userError) console.error("Supabase User Error:", userError);
 
         const selectedFreq = FREQUENCIES[freqIndex];
         const frequencyInSeconds = selectedFreq.days * 24 * 60 * 60; 
 
-        // 核心修改：next_run_time 设为现在，机器人会立刻执行第一笔
-        const { error: jobError } = await supabase
+        // 插入时强制小写，并立即 select 返回
+        const { data: insertedJob, error: jobError } = await supabase
             .from('dca_jobs')
             .insert([{
-                user_address: currentAccount,
+                user_address: normalizedAccount, // <--- 强制小写
                 token_in: USDC_ADDRESS,
                 token_out: CBBTC_ADDRESS,
                 amount_per_trade: Number(amount),
                 frequency_seconds: frequencyInSeconds,
                 status: 'ACTIVE',
                 next_run_time: new Date().toISOString() 
-            }]);
+            }])
+            .select() // <--- 立即获取返回数据
+            .single();
 
         if (jobError) throw jobError;
 
         alert(`🎉 Success! Plan Created.\n\nThe bot will execute your first buy of $${amount} shortly.`);
         
-        await fetchActiveJob(currentAccount); 
-        setActiveTab('assets'); // 跳转看卡片
+        // 立即更新 UI
+        if (insertedJob) {
+            setActiveJob(insertedJob);
+        } else {
+            await fetchActiveJob(normalizedAccount); 
+        }
+        
+        setActiveTab('assets'); 
 
     } catch (err: any) {
         console.error("DCA Error:", err);
@@ -327,7 +349,9 @@ Your first trade will happen immediately via our bot.`;
         .eq('id', jobId);
 
       if (error) throw error;
-      fetchActiveJob(); 
+      
+      // 这里的 fetchActiveJob 也会使用修复后的小写逻辑
+      fetchActiveJob(account); 
     } catch (error) {
       alert("Failed to cancel plan");
     } finally {
@@ -514,7 +538,6 @@ Your first trade will happen immediately via our bot.`;
                   </div>
                   <Trophy className="text-yellow-400 opacity-80" size={40} />
                 </div>
-                {/* ... existing rank content ... */}
               </div>
               
               {/* Leaderboard List */}
@@ -537,7 +560,6 @@ Your first trade will happen immediately via our bot.`;
                 ))}
               </div>
             </div>
-            {/* ... bottom rank stats ... */}
           </div>
         )}
       </main>
