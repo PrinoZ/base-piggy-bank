@@ -76,7 +76,6 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
         const totalInvested = executions * (job.amount_per_trade || 0);
         const estimatedBTC = totalInvested / CURRENT_ASSET_PRICE;
         
-        // 估算 ROI
         const currentVal = estimatedBTC * CURRENT_ASSET_PRICE * 1.05; 
         const roi = ((currentVal - totalInvested) / totalInvested) * 100;
 
@@ -521,7 +520,6 @@ Your first trade will happen immediately via our bot.`;
                         </span>
                     </div>
                     
-                    {/* 进度条 */}
                     <div className="mt-3 w-1/2">
                         <div className="flex justify-between items-end mb-1">
                             <span className="text-[9px] font-bold text-blue-600">
@@ -543,7 +541,8 @@ Your first trade will happen immediately via our bot.`;
               
               <div className="flex-1 w-full min-h-0 pt-2 pb-2">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={calculation.data} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
+                  {/* 恢复了图表间距 */}
+                  <AreaChart data={calculation.data} margin={{ top: 5, right: 35, left: 20, bottom: 5 }}>
                     <defs>
                       <linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#2563EB" stopOpacity={0.25}/>
@@ -552,7 +551,8 @@ Your first trade will happen immediately via our bot.`;
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                     <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" minTickGap={30} />
-                    <YAxis hide={true} />
+                    {/* 恢复了 Y 轴显示 */}
+                    <YAxis hide={false} axisLine={false} tickLine={false} width={35} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(0)}k` : val} />
                     <Tooltip contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px', fontSize: '11px', color: 'white', padding: '8px' }} itemStyle={{ padding: 0 }} formatter={(val: any) => [`${Number(val).toFixed(4)}`, 'cbBTC']} labelFormatter={(label) => `Date: ${label}`} labelStyle={{ color: '#94a3b8', marginBottom: '4px' }} />
                     <Area type="monotone" dataKey="coins" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCoins)" animationDuration={1000} />
                   </AreaChart>
@@ -595,7 +595,6 @@ Your first trade will happen immediately via our bot.`;
                   </div>
               </div>
 
-              {/* === 修复：加回 Duration 滑块 === */}
               <div className="pt-1">
                 <CompactSlider label="Duration" value={duration} min={1} max={48} unit="Months" onChange={setDuration} />
               </div>
