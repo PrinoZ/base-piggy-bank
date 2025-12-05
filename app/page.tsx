@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { ethers } from 'ethers'; 
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank, LayoutGrid, XCircle, RefreshCw, Plus } from 'lucide-react';
+import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank, LayoutGrid, XCircle, RefreshCw, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 
 // ==========================================
 //              CONSTANTS & TYPES
@@ -16,9 +16,8 @@ const BASE_RPC_URL = 'https://mainnet.base.org';
 
 const CURRENT_ASSET_PRICE = 64000; 
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; 
-// 修复：常量改为全小写，防止生成脏数据
 const CBBTC_ADDRESS = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"; 
-const DCA_CONTRACT_ADDRESS = "0x9432f3cf09E63D4B45a8e292Ad4D38d2e677AD0C";
+const DCA_CONTRACT_ADDRESS = "0x9432f3cf09e63d4b45a8e292ad4d38d2e677ad0c";
 
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) external returns (bool)",
@@ -70,50 +69,105 @@ const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
   </div>
 );
 
+// --- 核心修改：PlanCard 组件 ---
 const PlanCard = ({ job, isTemplate = false, onCancel, isLoading }: any) => {
+    // 状态：控制卡片是否展开
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    // 计算逻辑（模拟数据，实际需从链上或数据库读）
+    // 假设：累计投入 = (当前时间 - 创建时间) / 频率 * 金额
+    // 这里为了演示，我们简单模拟一个累计值
+    const accumulatedBTC = isTemplate ? 0 : 0.0042; // 示例数据
+    const accumulatedUSD = accumulatedBTC * CURRENT_ASSET_PRICE;
+    
+    // 计算截止日期 (假设定投默认是长期，或者根据 duration 算)
+    // 这里简单展示为 "Unlimited" 或者 "1 Year from now"
+    const endDate = new Date();
+    endDate.setFullYear(endDate.getFullYear() + 1);
+
     return (
-        <div className={`bg-white rounded-2xl p-5 border border-slate-200 shadow-sm relative overflow-hidden transition-all ${isTemplate ? 'opacity-40 blur-[2px] grayscale' : ''}`}>
+        <div 
+            className={`bg-white rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden transition-all duration-300 ${isTemplate ? 'opacity-40 blur-[2px] grayscale' : 'cursor-pointer hover:shadow-md'}`}
+            // 点击卡片切换展开状态
+            onClick={() => !isTemplate && setIsExpanded(!isExpanded)}
+        >
             {/* 背景装饰 */}
-            <div className="absolute top-0 right-0 p-3 opacity-10">
+            <div className="absolute top-0 right-0 p-3 opacity-10 pointer-events-none">
                 <Activity size={80} className="text-blue-600" />
             </div>
             
-            <div className="flex items-center gap-3 mb-4 relative z-10">
-                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
-                    <Activity size={20} />
+            {/* 卡片头部 (一直显示) */}
+            <div className="p-5 pb-3 relative z-10">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                            <Activity size={20} />
+                        </div>
+                        <div>
+                            <h3 className="text-base font-extrabold text-slate-900">USDC <span className="text-slate-400 mx-1">→</span> cbBTC</h3>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className={`w-2 h-2 rounded-full ${isTemplate ? 'bg-slate-400' : 'bg-green-500 animate-pulse'}`}></span>
+                                <span className={`text-[10px] font-bold uppercase tracking-wide ${isTemplate ? 'text-slate-500' : 'text-green-600'}`}>
+                                    {isTemplate ? 'Example Plan' : 'Active Running'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    {/* 展开/收起 指示器 */}
+                    {!isTemplate && (
+                        <div className="text-slate-400">
+                            {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                        </div>
+                    )}
                 </div>
-                <div>
-                    <h3 className="text-base font-extrabold text-slate-900">USDC <span className="text-slate-400 mx-1">→</span> cbBTC</h3>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className={`w-2 h-2 rounded-full ${isTemplate ? 'bg-slate-400' : 'bg-green-500 animate-pulse'}`}></span>
-                        <span className={`text-[10px] font-bold uppercase tracking-wide ${isTemplate ? 'text-slate-500' : 'text-green-600'}`}>
-                            {isTemplate ? 'Example Plan' : 'Active Running'}
-                        </span>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Amount / Trade</p>
+                        <p className="text-lg font-black text-slate-900">${job?.amount_per_trade || 100}</p>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Next Run</p>
+                        <p className="text-sm font-bold text-slate-700 mt-1">
+                            {isTemplate ? 'Immediately' : new Date(job?.next_run_time).toLocaleDateString()}
+                        </p>
                     </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mb-5 relative z-10">
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Amount / Trade</p>
-                    <p className="text-lg font-black text-slate-900">${job?.amount_per_trade || 100}</p>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Next Run</p>
-                    <p className="text-sm font-bold text-slate-700 mt-1">
-                        {isTemplate ? 'Immediately' : new Date(job?.next_run_time).toLocaleDateString()}
-                    </p>
+            {/* 展开详情区域 (动画显示) */}
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out relative z-10 ${isExpanded ? 'max-h-60 opacity-100' : 'max-h-0 opacity-0'}`}>
+                <div className="px-5 pb-5 pt-0">
+                    <div className="w-full h-px bg-slate-100 my-3"></div>
+                    
+                    {/* 新增详情：累计收益 & 截止日期 */}
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Total Assets</p>
+                            <div className="text-sm font-black text-slate-900">{accumulatedBTC.toFixed(4)} <span className="text-[10px] text-slate-400 font-bold">cbBTC</span></div>
+                            <div className="text-[10px] font-bold text-green-600">≈ ${accumulatedUSD.toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">End Date</p>
+                            <div className="text-sm font-bold text-slate-700">Open-ended</div> 
+                            <div className="text-[10px] text-slate-400">(Auto-renew)</div>
+                        </div>
+                    </div>
+
+                    {/* 缩小并移动后的 Cancel 按钮 */}
+                    <button 
+                        onClick={(e) => {
+                            e.stopPropagation(); // 防止点击按钮时触发卡片折叠
+                            !isTemplate && onCancel(job.id);
+                        }}
+                        disabled={isTemplate || isLoading}
+                        className="w-full py-2 rounded-lg border border-red-100 bg-red-50 text-red-600 font-bold text-xs hover:bg-red-100 transition-all flex items-center justify-center gap-1.5"
+                    >
+                        <XCircle size={14} />
+                        {isLoading ? 'Processing...' : 'Stop & Cancel Plan'}
+                    </button>
                 </div>
             </div>
-
-            <button 
-                onClick={() => !isTemplate && onCancel(job.id)}
-                disabled={isTemplate || isLoading}
-                className="w-full py-3 rounded-xl border-2 border-red-50 bg-red-50/50 text-red-600 font-bold text-sm hover:bg-red-100 hover:border-red-200 transition-all flex items-center justify-center gap-2 relative z-10"
-            >
-                <XCircle size={16} />
-                {isLoading ? 'Processing...' : 'Stop & Cancel Plan'}
-            </button>
         </div>
     );
 };
@@ -130,7 +184,10 @@ export default function App() {
   
   // Strategy State
   const [amount, setAmount] = useState<number | ''>(100);
-  const [freqIndex, setFreqIndex] = useState(2); 
+  
+  // --- 修改点 1：默认 Frequency 设为 Daily (Index 0) ---
+  const [freqIndex, setFreqIndex] = useState(0); 
+  
   const [duration, setDuration] = useState(12); 
   const [projectedPrice, setProjectedPrice] = useState(85000);
   
@@ -178,11 +235,10 @@ export default function App() {
 
   // --- Functions ---
 
-  // 修复：fetchActiveJob 强制使用小写地址查询
   const fetchActiveJob = async (userAddr = account) => {
     if (!userAddr) return;
     try {
-      const normalizedAddr = userAddr.toLowerCase(); // <--- 关键修复
+      const normalizedAddr = userAddr.toLowerCase();
 
       const { data, error } = await supabase
         .from('dca_jobs')
@@ -246,7 +302,6 @@ export default function App() {
       return null;
   };
 
-  // 修复：handleStartDCA 强制小写存储，并立即返回数据
   const handleStartDCA = async () => {
     setIsLoading(true);
     let currentAccount = account;
@@ -260,7 +315,7 @@ export default function App() {
             setAccount(currentAccount);
         }
 
-        const normalizedAccount = currentAccount.toLowerCase(); // <--- 关键修复
+        const normalizedAccount = currentAccount.toLowerCase();
 
         await switchToBase(); 
 
@@ -269,17 +324,19 @@ export default function App() {
         const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, signer);
         
         // 1. Check Allowance
-        console.log("Checking allowance...");
         const requiredAmount = ethers.parseUnits(amount.toString(), 6);
-        const allowance = await usdcContract.allowance(currentAccount, DCA_CONTRACT_ADDRESS);
+        console.log(`Checking allowance for user: ${normalizedAccount}`);
+        const allowance = await usdcContract.allowance(normalizedAccount, DCA_CONTRACT_ADDRESS);
         
         if (allowance < requiredAmount) {
+            alert("⚠️ First time setup: You need to approve USDC usage.\nPlease confirm the transaction in your wallet.");
             const approveTx = await usdcContract.approve(DCA_CONTRACT_ADDRESS, ethers.MaxUint256);
             console.log("Approval tx sent:", approveTx.hash);
-            await approveTx.wait(); 
+            await approveTx.wait();
+            console.log("Approval confirmed on chain!");
         }
 
-        // 2. Sign Message (Double Confirm)
+        // 2. Sign Message
         const message = `Confirm DCA Plan Creation:
 -------------------------
 Token: USDC -> cbBTC
@@ -299,11 +356,10 @@ Your first trade will happen immediately via our bot.`;
         const selectedFreq = FREQUENCIES[freqIndex];
         const frequencyInSeconds = selectedFreq.days * 24 * 60 * 60; 
 
-        // 插入时强制小写，并立即 select 返回
         const { data: insertedJob, error: jobError } = await supabase
             .from('dca_jobs')
             .insert([{
-                user_address: normalizedAccount, // <--- 强制小写
+                user_address: normalizedAccount,
                 token_in: USDC_ADDRESS,
                 token_out: CBBTC_ADDRESS,
                 amount_per_trade: Number(amount),
@@ -311,14 +367,13 @@ Your first trade will happen immediately via our bot.`;
                 status: 'ACTIVE',
                 next_run_time: new Date().toISOString() 
             }])
-            .select() // <--- 立即获取返回数据
+            .select()
             .single();
 
         if (jobError) throw jobError;
 
         alert(`🎉 Success! Plan Created.\n\nThe bot will execute your first buy of $${amount} shortly.`);
         
-        // 立即更新 UI
         if (insertedJob) {
             setActiveJob(insertedJob);
         } else {
@@ -350,7 +405,6 @@ Your first trade will happen immediately via our bot.`;
 
       if (error) throw error;
       
-      // 这里的 fetchActiveJob 也会使用修复后的小写逻辑
       fetchActiveJob(account); 
     } catch (error) {
       alert("Failed to cancel plan");
