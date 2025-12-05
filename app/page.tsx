@@ -395,6 +395,13 @@ export default function App() {
     let currentAccount = account;
 
     try {
+        // === 验证 1: 金额必须大于 0 ===
+        if (!amount || Number(amount) <= 0) {
+            alert("Please enter a valid Amount per Trade greater than 0.");
+            setIsLoading(false);
+            return;
+        }
+
         if (!window.ethereum) throw new Error("No wallet found");
         if (!currentAccount) {
             const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
@@ -576,7 +583,7 @@ Your first trade will happen immediately via our bot.`;
 
             {/* 下半部分：控制区 (位置互换) */}
             <div className="flex-none p-5 bg-white space-y-3">
-              {/* 1. Target Goal (现在放在最上面) */}
+              {/* 1. Target Goal */}
               <div>
                 <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
                   <span>Target Goal</span>
@@ -601,7 +608,7 @@ Your first trade will happen immediately via our bot.`;
                 </div>
               </div>
 
-              {/* 2. Amount per Trade (现在放在下面) */}
+              {/* 2. Amount per Trade (增加输入限制) */}
               <div>
                 <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
                   <span>Amount per Trade</span>
@@ -609,7 +616,21 @@ Your first trade will happen immediately via our bot.`;
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">$</span>
-                  <input type="number" value={amount} placeholder="0" onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-7 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" />
+                  <input 
+                    type="number" 
+                    min="0.01"
+                    step="0.01"
+                    value={amount} 
+                    placeholder="Min 1" 
+                    onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') { setAmount(''); return; }
+                        const num = Number(val);
+                        if (num < 0) return; // 拦截负数
+                        setAmount(num);
+                    }} 
+                    className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-7 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" 
+                  />
                 </div>
               </div>
 
@@ -625,7 +646,6 @@ Your first trade will happen immediately via our bot.`;
                   </div>
               </div>
 
-              {/* 4. Duration */}
               <div className="pt-1">
                 <CompactSlider label="Duration" value={duration} min={1} max={48} unit="Months" onChange={setDuration} />
               </div>
