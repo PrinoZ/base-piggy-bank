@@ -13,7 +13,7 @@ import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, 
 
 const BASE_CHAIN_ID = '0x2105'; 
 const BASE_RPC_URL = 'https://mainnet.base.org';
-const CURRENT_ASSET_PRICE = 96000; // 更新一下大概价格
+const CURRENT_ASSET_PRICE = 96000; 
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; 
 const CBBTC_ADDRESS = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"; 
 const DCA_CONTRACT_ADDRESS = "0x9432f3cf09e63d4b45a8e292ad4d38d2e677ad0c";
@@ -21,7 +21,7 @@ const DCA_CONTRACT_ADDRESS = "0x9432f3cf09e63d4b45a8e292ad4d38d2e677ad0c";
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) external returns (bool)",
   "function allowance(address owner, address spender) external view returns (uint256)",
-  "function balanceOf(address account) external view returns (uint256)", // 新增：查余额
+  "function balanceOf(address account) external view returns (uint256)",
   "function decimals() view returns (uint8)"
 ];
 
@@ -42,16 +42,6 @@ const getFutureDateLabel = (monthsToAdd: number) => {
 //              COMPONENTS
 // ==========================================
 
-const StatBox = ({ label, value, subValue, highlight, isPositive }: any) => (
-  <div className="flex flex-col bg-white p-2 rounded-lg border border-slate-200 flex-1 min-w-0">
-    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider truncate">{label}</span>
-    <div className={`text-base font-extrabold leading-tight truncate ${highlight ? (isPositive ? 'text-green-700' : 'text-slate-900') : 'text-slate-900'}`}>
-      {value}
-    </div>
-    {subValue && <div className="text-[10px] font-bold text-slate-500">{subValue}</div>}
-  </div>
-);
-
 const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
   <div className="w-full">
     <div className="flex justify-between items-center mb-1">
@@ -69,33 +59,37 @@ const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
   </div>
 );
 
-// === 核心组件：PlanCard ===
+// === PlanCard 组件 ===
 const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }: any) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [history, setHistory] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
 
-    // 1. 计算累计数据
     const calculateStats = () => {
-        if (isTemplate || !job) return { btc: 0, usd: 0, endDate: 'N/A' };
+        if (isTemplate || !job) return { btc: 0, usd: 0, endDate: 'N/A', roi: 0 };
         
-        // 简单的估算逻辑 (实际应从 history 累加)
         const startTime = new Date(job.created_at).getTime();
         const now = new Date().getTime();
         const freqMs = (job.frequency_seconds || 86400) * 1000;
-        const executions = Math.floor((now - startTime) / freqMs) + 1;
+        // 至少显示1次
+        const executions = Math.max(1, Math.floor((now - startTime) / freqMs) + 1);
+        
         const totalInvested = executions * (job.amount_per_trade || 0);
+        // 简单估算 BTC 数量
         const estimatedBTC = totalInvested / CURRENT_ASSET_PRICE;
         
-        const endDateObj = new Date(startTime);
-        endDateObj.setMonth(endDateObj.getMonth() + 12); // 默认12个月
+        // 估算 ROI (假设价格涨了5%来演示)
+        const currentVal = estimatedBTC * CURRENT_ASSET_PRICE * 1.05; 
+        const roi = ((currentVal - totalInvested) / totalInvested) * 100;
 
-        return { btc: estimatedBTC, usd: totalInvested, endDate: endDateObj.toLocaleDateString(), roi: 12.5 };
+        const endDateObj = new Date(startTime);
+        endDateObj.setMonth(endDateObj.getMonth() + 12); 
+
+        return { btc: estimatedBTC, usd: totalInvested, endDate: endDateObj.toLocaleDateString(), roi: roi };
     };
 
     const stats = calculateStats();
 
-    // 2. 加载交易历史 (只在展开时加载)
     useEffect(() => {
         if (isExpanded && !isTemplate && job?.id) {
             setLoadingHistory(true);
@@ -104,7 +98,7 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
                 .select('*')
                 .eq('job_id', job.id)
                 .order('created_at', { ascending: false })
-                .limit(5) // 只显示最近5条
+                .limit(5)
                 .then(({ data }) => {
                     setHistory(data || []);
                     setLoadingHistory(false);
@@ -112,18 +106,26 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
         }
     }, [isExpanded, job, isTemplate]);
 
-    // 3. 余额不足检查
     const isLowBalance = !isTemplate && usdcBalance !== null && Number(usdcBalance) < Number(job?.amount_per_trade);
 
-    // 4. 分享功能
     const handleShare = (e: any) => {
         e.stopPropagation();
-        const text = `I'm auto-investing cbBTC via @BasePiggyBank! 🐷\n\nAccumulated: ${stats.btc.toFixed(4)} BTC\nCurrent ROI: +${stats.roi}%\n\nStart your journey on Base! 🚀`;
+        const text = `I'm auto-investing cbBTC via @BasePiggyBank! 🐷\n\nAccumulated: ${stats.btc.toFixed(4)} BTC\nInvested: $${stats.usd}\n\nStart your journey on Base! 🚀`;
         if (navigator.share) {
             navigator.share({ title: 'Base Piggy Bank', text: text, url: window.location.href }).catch(console.error);
         } else {
             navigator.clipboard.writeText(text);
             alert("Share text copied to clipboard!");
+        }
+    };
+
+    // 修复 Cancel 按钮点击
+    const handleCancelClick = (e: React.MouseEvent) => {
+        e.stopPropagation(); // 阻止冒泡
+        e.preventDefault(); // 阻止默认行为
+        console.log("Cancel button clicked for job:", job?.id);
+        if (!isTemplate && onCancel && job?.id) {
+            onCancel(job.id);
         }
     };
 
@@ -137,12 +139,11 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
             </div>
             
             <div className="p-5 pb-3 relative z-10">
-                {/* 余额警告条 */}
                 {isLowBalance && (
                     <div className="mb-3 bg-red-50 border border-red-100 rounded-lg p-2 flex items-start gap-2 animate-pulse">
                         <AlertTriangle className="text-red-500 shrink-0" size={16} />
                         <p className="text-[10px] font-bold text-red-600 leading-tight">
-                            Insufficient Balance. Next trade may fail. Please deposit USDC on Base.
+                            Insufficient Balance. Next trade may fail. Please deposit USDC.
                         </p>
                     </div>
                 )}
@@ -183,12 +184,10 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
                 </div>
             </div>
 
-            {/* 展开详情区域 */}
-            <div className={`overflow-hidden transition-all duration-300 ease-in-out relative z-10 ${isExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out relative z-10 ${isExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
                 <div className="px-5 pb-5 pt-0">
                     <div className="w-full h-px bg-slate-100 my-3"></div>
                     
-                    {/* 统计数据 */}
                     <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
                             <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Total Accumulated</p>
@@ -201,7 +200,6 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
                         </div>
                     </div>
 
-                    {/* 分享按钮 */}
                     <button 
                         onClick={handleShare}
                         className="w-full mb-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
@@ -210,7 +208,6 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
                         Share My Results
                     </button>
 
-                    {/* 交易历史 */}
                     <div className="mb-4">
                         <p className="text-[10px] text-slate-500 font-bold uppercase mb-2">Recent Transactions</p>
                         <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden">
@@ -243,14 +240,11 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
                         </div>
                     </div>
 
-                    {/* 取消按钮 */}
+                    {/* 修复后的 Cancel 按钮 */}
                     <button 
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            !isTemplate && onCancel(job.id);
-                        }}
+                        onClick={handleCancelClick}
                         disabled={isTemplate || isLoading}
-                        className="w-full py-2 rounded-lg border border-red-100 bg-red-50 text-red-600 font-bold text-xs hover:bg-red-100 transition-all flex items-center justify-center gap-1.5"
+                        className="w-full py-3 rounded-lg border border-red-100 bg-red-50 text-red-600 font-bold text-xs hover:bg-red-100 transition-all flex items-center justify-center gap-1.5 relative z-50 cursor-pointer"
                     >
                         <XCircle size={14} />
                         Stop & Cancel Plan
@@ -268,7 +262,7 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
 export default function App() {
   const [activeTab, setActiveTab] = useState('strategy'); 
   const [account, setAccount] = useState(''); 
-  const [usdcBalance, setUsdcBalance] = useState<string | null>(null); // 新增：余额状态
+  const [usdcBalance, setUsdcBalance] = useState<string | null>(null); 
   const [isLoading, setIsLoading] = useState(false); 
   const [activeJob, setActiveJob] = useState(null); 
   
@@ -276,21 +270,19 @@ export default function App() {
   const [amount, setAmount] = useState<number | ''>(100);
   const [freqIndex, setFreqIndex] = useState(0); 
   const [duration, setDuration] = useState(12); 
-  const [targetGoal, setTargetGoal] = useState<number>(0.1); // 新增：目标状态
+  const [targetGoal, setTargetGoal] = useState<number>(0.1); 
   
-  // --- Effects ---
   useEffect(() => {
     const init = async () => {
         const acc = await connectWallet(true); 
         if (acc) {
             fetchActiveJob(acc);
-            fetchUsdcBalance(acc); // 查余额
+            fetchUsdcBalance(acc); 
         }
     };
     init();
   }, []);
 
-  // --- Calculation Results (已移除 Predict BTC 逻辑) ---
   const calculation = useMemo(() => {
     const safeAmount = amount === '' ? 0 : amount;
     const selectedFreq = FREQUENCIES[freqIndex];
@@ -298,11 +290,9 @@ export default function App() {
     const monthlyAmount = safeAmount * investmentsPerMonth;
     const totalInvested = monthlyAmount * duration;
     
-    // 简单计算 accumulatedCoins
     let accumulatedCoins = 0;
     const currentPrice = CURRENT_ASSET_PRICE;
     
-    // 简化图表数据逻辑，仅做展示
     const data = [];
     for (let i = 0; i <= duration; i++) {
         if (i > 0) accumulatedCoins += monthlyAmount / currentPrice;
@@ -315,7 +305,6 @@ export default function App() {
     }
 
     const finalValue = accumulatedCoins * currentPrice;
-    
     return { data, totalInvested, finalValue, totalCoins: accumulatedCoins };
   }, [amount, freqIndex, duration]);
 
@@ -337,7 +326,6 @@ export default function App() {
     } catch (error) { console.error("Error fetching job:", error); }
   };
 
-  // 新增：查 USDC 余额
   const fetchUsdcBalance = async (userAddr: string) => {
       if (!window.ethereum) return;
       try {
@@ -473,6 +461,7 @@ Your first trade will happen immediately via our bot.`;
     }
   };
 
+  // 修复后的 handleCancelPlan
   const handleCancelPlan = async (jobId: any) => {
     const confirmCancel = window.confirm("Are you sure you want to stop this plan?");
     if (!confirmCancel) return;
@@ -483,6 +472,10 @@ Your first trade will happen immediately via our bot.`;
         .update({ status: 'CANCELLED' })
         .eq('id', jobId);
       if (error) throw error;
+      
+      // 更新成功后，清空本地状态
+      setActiveJob(null);
+      // 重新拉取以防万一
       fetchActiveJob(account); 
     } catch (error) { alert("Failed to cancel plan"); } 
     finally { setIsLoading(false); }
@@ -522,41 +515,45 @@ Your first trade will happen immediately via our bot.`;
         
         {/* TAB 1: STRATEGY */}
         {activeTab === 'strategy' && (
-          <>
-            <div className="flex-none h-[32%] w-full bg-slate-50 border-b border-slate-200 flex flex-col relative">
-              <div className="px-5 pt-4 pb-1 flex-none flex justify-between items-start">
+          <div className="flex flex-col h-full">
+            {/* 上半部分：图表区 (扩大比例) */}
+            <div className="flex-1 bg-slate-50 border-b border-slate-200 flex flex-col relative min-h-0">
+              <div className="px-5 pt-4 pb-2 flex-none">
                 <div className="w-full">
-                    <div className="flex items-baseline gap-1">
+                    {/* 1. 大数字 + Total Invested */}
+                    <div className="flex items-baseline gap-2">
                         <div className="text-3xl font-black text-slate-900 tracking-tighter leading-none">
                            {calculation.totalCoins.toFixed(4)}
                         </div>
                         <span className="text-[10px] font-bold text-slate-500 uppercase">cbBTC</span>
+                        <span className="text-[10px] font-bold text-slate-400">
+                            (≈ ${Math.round(calculation.totalInvested).toLocaleString()} Invested)
+                        </span>
                     </div>
                     
-                    {/* === 核心修改：目标进度条 === */}
-                    <div className="mt-2 w-full">
+                    {/* 2. 进度条 (宽度 50%) */}
+                    <div className="mt-3 w-1/2">
                         <div className="flex justify-between items-end mb-1">
-                            <span className="text-[10px] font-bold text-slate-400">Accumulated Assets</span>
-                            <span className="text-[10px] font-bold text-blue-600">
-                                Goal: {targetGoal} cbBTC
+                            <span className="text-[9px] font-bold text-blue-600">
+                                Goal: {targetGoal}
+                            </span>
+                            <span className="text-[9px] font-bold text-slate-400">
+                                {((calculation.totalCoins / targetGoal) * 100).toFixed(0)}%
                             </span>
                         </div>
-                        <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
                             <div 
                                 className="h-full bg-blue-600 rounded-full transition-all duration-1000"
                                 style={{ width: `${Math.min((calculation.totalCoins / targetGoal) * 100, 100)}%` }}
                             ></div>
                         </div>
-                        <div className="text-right mt-0.5 text-[9px] font-bold text-slate-400">
-                            {((calculation.totalCoins / targetGoal) * 100).toFixed(1)}% Achieved
-                        </div>
                     </div>
                 </div>
               </div>
               
-              <div className="flex-1 min-h-0 w-full pt-0">
+              <div className="flex-1 w-full min-h-0 pt-2 pb-2">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={calculation.data} margin={{ top: 5, right: 35, left: 20, bottom: 5 }}>
+                  <AreaChart data={calculation.data} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#2563EB" stopOpacity={0.25}/>
@@ -565,7 +562,7 @@ Your first trade will happen immediately via our bot.`;
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                     <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" minTickGap={30} />
-                    <YAxis hide={false} axisLine={false} tickLine={false} width={35} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(0)}k` : val} />
+                    <YAxis hide={true} />
                     <Tooltip contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px', fontSize: '11px', color: 'white', padding: '8px' }} itemStyle={{ padding: 0 }} formatter={(val: any) => [`${Number(val).toFixed(4)}`, 'cbBTC']} labelFormatter={(label) => `Date: ${label}`} labelStyle={{ color: '#94a3b8', marginBottom: '4px' }} />
                     <Area type="monotone" dataKey="coins" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCoins)" animationDuration={1000} />
                   </AreaChart>
@@ -573,60 +570,49 @@ Your first trade will happen immediately via our bot.`;
               </div>
             </div>
 
-            <div className="flex-1 flex flex-col p-4 bg-white min-h-0">
-              <div className="flex gap-3 mb-4 flex-none">
-                  <StatBox label="Total Invested" value={`$${Math.round(calculation.totalInvested).toLocaleString()}`} />
-                  <StatBox label="Est. Value" value={`$${Math.round(calculation.finalValue).toLocaleString()}`} highlight />
+            {/* 下半部分：控制区 (固定高度) */}
+            <div className="flex-none p-5 bg-white space-y-5">
+              <div>
+                <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
+                  <span>Amount per Trade</span>
+                  <span className="text-slate-500 font-medium">USDC</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">$</span>
+                  <input type="number" value={amount} placeholder="0" onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-7 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" />
+                </div>
               </div>
-
-              <div className="flex-1 overflow-y-auto min-h-0 space-y-4 pr-1">
-                {/* 设定金额 */}
-                <div>
-                  <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
-                    <span>Amount per Trade</span>
-                    <span className="text-slate-500 font-medium">USDC</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">$</span>
-                    <input type="number" value={amount} placeholder="0" onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-7 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" />
-                  </div>
-                </div>
-                
-                {/* 设定目标 */}
-                <div>
-                  <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
-                    <span>Target Goal</span>
-                    <span className="text-slate-500 font-medium">cbBTC</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">🎯</span>
-                    <input type="number" value={targetGoal} step="0.01" onChange={(e) => setTargetGoal(Number(e.target.value))} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-9 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" />
-                  </div>
-                </div>
-
-                <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Frequency</label>
-                    <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-lg">
-                      {FREQUENCIES.map((freq, idx) => (
-                        <button key={freq.value} onClick={() => setFreqIndex(idx)} className={`py-2 rounded-md text-[10px] font-bold transition-all leading-tight ${freqIndex === idx ? 'bg-white text-blue-700 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'}`}>
-                          {freq.label}
-                        </button>
-                      ))}
-                    </div>
-                </div>
-                <div className="space-y-3 pt-1">
-                  <CompactSlider label="Duration" value={duration} min={1} max={48} unit="Months" onChange={setDuration} />
+              
+              <div>
+                <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
+                  <span>Target Goal</span>
+                  <span className="text-slate-500 font-medium">cbBTC</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">🎯</span>
+                  <input type="number" value={targetGoal} step="0.01" onChange={(e) => setTargetGoal(Number(e.target.value))} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-9 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" />
                 </div>
               </div>
 
-              <div className="mt-2 mb-0 pt-2 border-t border-slate-100 flex-none text-center">
+              <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Frequency</label>
+                  <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-lg">
+                    {FREQUENCIES.map((freq, idx) => (
+                      <button key={freq.value} onClick={() => setFreqIndex(idx)} className={`py-2 rounded-md text-[10px] font-bold transition-all leading-tight ${freqIndex === idx ? 'bg-white text-blue-700 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'}`}>
+                        {freq.label}
+                      </button>
+                    ))}
+                  </div>
+              </div>
+              
+              <div className="pt-2">
                 <button className={`w-full text-white font-bold text-lg py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 active:bg-blue-700 active:scale-[0.98] shadow-blue-600/20'}`} onClick={handleStartDCA} disabled={isLoading}>
                   {isLoading ? 'Processing...' : (<>Start DCA <ChevronRight size={20} /></>)}
                 </button>
-                <p className="text-[10px] text-slate-400 mt-2 px-2 font-medium">This is a non-custodial protocol. We don't hold any user funds.</p>
+                <p className="text-[10px] text-slate-400 mt-2 px-2 font-medium text-center">This is a non-custodial protocol. We don't hold any user funds.</p>
               </div>
             </div>
-          </>
+          </div>
         )}
 
         {/* TAB 2: ASSETS */}
