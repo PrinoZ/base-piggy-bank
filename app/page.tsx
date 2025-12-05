@@ -105,15 +105,13 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
 
     const isLowBalance = !isTemplate && usdcBalance !== null && Number(usdcBalance) < Number(job?.amount_per_trade);
 
-    // === 修复分享按钮逻辑 ===
     const handleShare = async (e: any) => {
-        e.stopPropagation(); // 防止触发卡片折叠
+        e.stopPropagation(); 
         
         const text = `I'm auto-investing cbBTC via @BasePiggyBank! 🐷\n\nAccumulated: ${stats.btc.toFixed(4)} BTC\nInvested: $${stats.usd}\n\nStart your journey on Base! 🚀`;
         const url = window.location.href;
 
         try {
-            // 优先尝试原生分享 (Mobile / Safari)
             if (navigator.share) {
                 await navigator.share({
                     title: 'Base Piggy Bank',
@@ -121,11 +119,9 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
                     url: url
                 });
             } else {
-                // 回退：复制到剪贴板 (PC Chrome/Edge)
                 throw new Error("Share API not supported");
             }
         } catch (error) {
-            // 复制到剪贴板作为保底方案
             try {
                 await navigator.clipboard.writeText(`${text}\n${url}`);
                 alert("📋 Results copied to clipboard! You can paste it to Twitter/Farcaster.");
@@ -283,8 +279,6 @@ export default function App() {
   const [amount, setAmount] = useState<number | ''>(100);
   const [freqIndex, setFreqIndex] = useState(0); 
   const [duration, setDuration] = useState(12); 
-  
-  // === 修复 1：Target Goal 允许为空字符串 ===
   const [targetGoal, setTargetGoal] = useState<number | ''>(0.1); 
   
   useEffect(() => {
@@ -300,7 +294,7 @@ export default function App() {
 
   const calculation = useMemo(() => {
     const safeAmount = amount === '' ? 0 : amount;
-    const safeGoal = targetGoal === '' ? 0.1 : targetGoal; // 防止除以0或空
+    const safeGoal = targetGoal === '' ? 0.1 : targetGoal; 
     const selectedFreq = FREQUENCIES[freqIndex];
     const investmentsPerMonth = 30 / selectedFreq.days; 
     const monthlyAmount = safeAmount * investmentsPerMonth;
@@ -580,20 +574,9 @@ Your first trade will happen immediately via our bot.`;
               </div>
             </div>
 
-            {/* 下半部分：控制区 */}
+            {/* 下半部分：控制区 (位置互换) */}
             <div className="flex-none p-5 bg-white space-y-3">
-              <div>
-                <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
-                  <span>Amount per Trade</span>
-                  <span className="text-slate-500 font-medium">USDC</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">$</span>
-                  <input type="number" value={amount} placeholder="0" onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-7 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" />
-                </div>
-              </div>
-              
-              {/* === 修复 2：Target Goal 增加备注信息，允许清空 === */}
+              {/* 1. Target Goal (现在放在最上面) */}
               <div>
                 <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
                   <span>Target Goal</span>
@@ -618,6 +601,19 @@ Your first trade will happen immediately via our bot.`;
                 </div>
               </div>
 
+              {/* 2. Amount per Trade (现在放在下面) */}
+              <div>
+                <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
+                  <span>Amount per Trade</span>
+                  <span className="text-slate-500 font-medium">USDC</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">$</span>
+                  <input type="number" value={amount} placeholder="0" onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-7 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" />
+                </div>
+              </div>
+
+              {/* 3. Frequency */}
               <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Frequency</label>
                   <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-lg">
@@ -629,6 +625,7 @@ Your first trade will happen immediately via our bot.`;
                   </div>
               </div>
 
+              {/* 4. Duration */}
               <div className="pt-1">
                 <CompactSlider label="Duration" value={duration} min={1} max={48} unit="Months" onChange={setDuration} />
               </div>
