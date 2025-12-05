@@ -38,17 +38,22 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${jobs.length} jobs to execute`)
 
+    // 验证新代码是否部署成功的标记
+    console.log("=== RUNNING V4: LOGGING + GAS LIMIT (300k) ===") 
+
     const provider = new ethers.JsonRpcProvider(RPC_URL)
     const wallet = new ethers.Wallet(PRIVATE_KEY, provider)
     const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, wallet)
 
-    // === 核心修改：Gas 价格极致优化 (双重封顶) ===
-    // 1. maxPriorityFeePerGas: 给矿工的小费 (0.01 Gwei)
-    // 2. maxFeePerGas: 总价封顶 (0.1 Gwei)
-    // 这样设置后，Ethers.js 检查余额时就只需检查是否够付 0.1 Gwei 的单价，而不是 1.0 Gwei
+    // === 核心修改：Gas 价格 + 用量三重锁定 ===
     const txOptions = {
+        // 1. 小费：极低 (0.01 Gwei)
         maxPriorityFeePerGas: ethers.parseUnits('0.01', 'gwei'),
-        maxFeePerGas: ethers.parseUnits('0.1', 'gwei') 
+        // 2. 总价封顶：限制最高 0.1 Gwei
+        maxFeePerGas: ethers.parseUnits('0.1', 'gwei'),
+        // 3. 【新增】强制指定 Gas 用量 (30万足够覆盖)
+        // 这一步彻底跳过 estimateGas，防止余额不足报错
+        gasLimit: 300000 
     };
 
     const results = []
@@ -74,17 +79,29 @@ Deno.serve(async (req) => {
         console.log("Sending tx with routes:", JSON.stringify(routes))
 
         // === 发送交易 ===
-        // 将 txOptions 作为最后一个参数传入
         const tx = await contract.executeDCA(
           cleanUserAddr, 
           amountIn, 
           0, 
           ethers.ZeroAddress, 
           routes,
-          txOptions // <--- 应用双重封顶配置
+          txOptions // <--- 应用三重锁定配置
         )
         
         console.log(`Tx sent: ${tx.hash}`)
+
+        // === 新增：记录交易历史到数据库 ===
+        // 这让前端可以在卡片详情里展示"Transaction History"
+        const { error: logError } = await supabase
+          .from('dca_transactions')
+          .insert({
+            job_id: job.id,
+            user_address: job.user_address, // 存原始的全小写即可
+            amount_usdc: job.amount_per_trade,
+            tx_hash: tx.hash
+          });
+          
+        if (logError) console.error("Failed to log transaction:", logError);
         
         // 更新下一次运行时间
         const nextRun = new Date(new Date().getTime() + job.frequency_seconds * 1000)
