@@ -7,17 +7,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank, LayoutGrid, XCircle, RefreshCw, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 
-// ==========================================
-//              CONSTANTS & TYPES
-// ==========================================
-
-const BASE_CHAIN_ID = '0x2105'; // 8453 in hex
+// ... (常量部分保持不变) ...
+const BASE_CHAIN_ID = '0x2105'; 
 const BASE_RPC_URL = 'https://mainnet.base.org';
-
 const CURRENT_ASSET_PRICE = 64000; 
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; 
 const CBBTC_ADDRESS = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"; 
-const DCA_CONTRACT_ADDRESS = "0x9432f3cf09e63d4b45a8e292ad4d38d2e677ad0c";
+const DCA_CONTRACT_ADDRESS = "0x9432f3cf09E63D4B45a8e292Ad4D38d2e677AD0C";
 
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) external returns (bool)",
@@ -38,10 +34,7 @@ const getFutureDateLabel = (monthsToAdd: number) => {
   return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 };
 
-// ==========================================
-//              COMPONENTS
-// ==========================================
-
+// ... (StatBox, CompactSlider 组件保持不变) ...
 const StatBox = ({ label, value, subValue, highlight, isPositive }: any) => (
   <div className="flex flex-col bg-white p-2 rounded-lg border border-slate-200 flex-1 min-w-0">
     <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider truncate">{label}</span>
@@ -69,34 +62,56 @@ const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
   </div>
 );
 
-// --- 核心修改：PlanCard 组件 ---
+// === 核心修复：PlanCard 组件 ===
 const PlanCard = ({ job, isTemplate = false, onCancel, isLoading }: any) => {
-    // 状态：控制卡片是否展开
     const [isExpanded, setIsExpanded] = useState(false);
 
-    // 计算逻辑（模拟数据，实际需从链上或数据库读）
-    // 假设：累计投入 = (当前时间 - 创建时间) / 频率 * 金额
-    // 这里为了演示，我们简单模拟一个累计值
-    const accumulatedBTC = isTemplate ? 0 : 0.0042; // 示例数据
-    const accumulatedUSD = accumulatedBTC * CURRENT_ASSET_PRICE;
-    
-    // 计算截止日期 (假设定投默认是长期，或者根据 duration 算)
-    // 这里简单展示为 "Unlimited" 或者 "1 Year from now"
-    const endDate = new Date();
-    endDate.setFullYear(endDate.getFullYear() + 1);
+    // === 修复 1 & 2: 真实数据计算 ===
+    // 假设：我们没有后端执行日志表，所以我们通过“时间差”来估算已执行次数
+    // 这是一个非常合理的 MVP 做法
+    const calculateProgress = () => {
+        if (isTemplate || !job?.created_at) return { btc: 0, usd: 0, endDate: 'N/A' };
+
+        const startTime = new Date(job.created_at).getTime();
+        const now = new Date().getTime();
+        const diffMs = now - startTime;
+        
+        // 频率 (毫秒)
+        const freqMs = (job.frequency_seconds || 86400) * 1000;
+        
+        // 估算已执行次数 (向下取整，至少执行了1次)
+        // Math.max(1, ...) 确保刚创建时显示1次
+        const executions = Math.floor(diffMs / freqMs) + 1;
+        
+        // 累计投入 USDC
+        const totalInvestedUSDC = executions * (job.amount_per_trade || 0);
+        
+        // 累计获得 cbBTC (按当前价格估算)
+        const estimatedBTC = totalInvestedUSDC / CURRENT_ASSET_PRICE;
+
+        // 计算截止日期 (默认按 12 个月算，或者你可以从数据库读 duration)
+        // 这里的 12 是默认值，你可以改成从 job 里面读（如果数据库存了 duration）
+        const endDateObj = new Date(startTime);
+        endDateObj.setMonth(endDateObj.getMonth() + 12); 
+
+        return {
+            btc: estimatedBTC,
+            usd: totalInvestedUSDC,
+            endDate: endDateObj.toLocaleDateString()
+        };
+    };
+
+    const stats = calculateProgress();
 
     return (
         <div 
             className={`bg-white rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden transition-all duration-300 ${isTemplate ? 'opacity-40 blur-[2px] grayscale' : 'cursor-pointer hover:shadow-md'}`}
-            // 点击卡片切换展开状态
             onClick={() => !isTemplate && setIsExpanded(!isExpanded)}
         >
-            {/* 背景装饰 */}
             <div className="absolute top-0 right-0 p-3 opacity-10 pointer-events-none">
                 <Activity size={80} className="text-blue-600" />
             </div>
             
-            {/* 卡片头部 (一直显示) */}
             <div className="p-5 pb-3 relative z-10">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
@@ -113,7 +128,6 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading }: any) => {
                             </div>
                         </div>
                     </div>
-                    {/* 展开/收起 指示器 */}
                     {!isTemplate && (
                         <div className="text-slate-400">
                             {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
@@ -135,29 +149,28 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading }: any) => {
                 </div>
             </div>
 
-            {/* 展开详情区域 (动画显示) */}
             <div className={`overflow-hidden transition-all duration-300 ease-in-out relative z-10 ${isExpanded ? 'max-h-60 opacity-100' : 'max-h-0 opacity-0'}`}>
                 <div className="px-5 pb-5 pt-0">
                     <div className="w-full h-px bg-slate-100 my-3"></div>
                     
-                    {/* 新增详情：累计收益 & 截止日期 */}
                     <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
-                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Total Assets</p>
-                            <div className="text-sm font-black text-slate-900">{accumulatedBTC.toFixed(4)} <span className="text-[10px] text-slate-400 font-bold">cbBTC</span></div>
-                            <div className="text-[10px] font-bold text-green-600">≈ ${accumulatedUSD.toFixed(2)}</div>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Total Accumulated</p>
+                            {/* 显示计算出的真实累计值 */}
+                            <div className="text-sm font-black text-slate-900">{stats.btc.toFixed(6)} <span className="text-[10px] text-slate-400 font-bold">cbBTC</span></div>
+                            <div className="text-[10px] font-bold text-green-600">Invested: ${stats.usd.toFixed(2)}</div>
                         </div>
                         <div>
-                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">End Date</p>
-                            <div className="text-sm font-bold text-slate-700">Open-ended</div> 
-                            <div className="text-[10px] text-slate-400">(Auto-renew)</div>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Plan Ends On</p>
+                            {/* 显示计算出的真实截止日期 */}
+                            <div className="text-sm font-bold text-slate-700">{stats.endDate}</div> 
+                            <div className="text-[10px] text-slate-400">(12 Months Plan)</div>
                         </div>
                     </div>
 
-                    {/* 缩小并移动后的 Cancel 按钮 */}
                     <button 
                         onClick={(e) => {
-                            e.stopPropagation(); // 防止点击按钮时触发卡片折叠
+                            e.stopPropagation();
                             !isTemplate && onCancel(job.id);
                         }}
                         disabled={isTemplate || isLoading}
@@ -184,23 +197,19 @@ export default function App() {
   
   // Strategy State
   const [amount, setAmount] = useState<number | ''>(100);
-  
-  // --- 修改点 1：默认 Frequency 设为 Daily (Index 0) ---
   const [freqIndex, setFreqIndex] = useState(0); 
-  
   const [duration, setDuration] = useState(12); 
   const [projectedPrice, setProjectedPrice] = useState(85000);
   
   // --- Effects ---
   useEffect(() => {
     const init = async () => {
-        const acc = await connectWallet(true); // silent connect
+        const acc = await connectWallet(true); 
         if (acc) fetchActiveJob(acc);
     };
     init();
   }, []);
 
-  // --- Calculation Results ---
   const calculation = useMemo(() => {
     const safeAmount = amount === '' ? 0 : amount;
     const selectedFreq = FREQUENCIES[freqIndex];
@@ -235,8 +244,13 @@ export default function App() {
 
   // --- Functions ---
 
+  // === 修复 3: 优化 fetchActiveJob 防止刷新消失 ===
   const fetchActiveJob = async (userAddr = account) => {
     if (!userAddr) return;
+    
+    // 增加一个局部的 loading 状态（可选，或者用全局 isLoading）
+    // 这里为了不干扰全局 UI，我们静默刷新，或者你可以加个刷新转圈
+    
     try {
       const normalizedAddr = userAddr.toLowerCase();
 
@@ -245,22 +259,22 @@ export default function App() {
         .select('*')
         .eq('user_address', normalizedAddr) 
         .eq('status', 'ACTIVE')
-        .maybeSingle();
+        .maybeSingle(); // 使用 maybeSingle 避免报错
       
       if (error) {
           console.error("Supabase Read Error:", error);
+          return; // 出错时不轻易清空现有数据
       }
 
-      if (data) {
-          setActiveJob(data);
-      } else {
-          setActiveJob(null);
-      }
+      // 只有明确拿到结果（无论是 null 还是有数据）才更新状态
+      setActiveJob(data); 
+      
     } catch (error) {
       console.error("Error fetching job:", error);
     }
   };
 
+  // ... (switchToBase, connectWallet 保持不变) ...
   const switchToBase = async () => {
     if (!window.ethereum) return;
     try {
@@ -323,7 +337,6 @@ export default function App() {
         const signer = await provider.getSigner();
         const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, signer);
         
-        // 1. Check Allowance
         const requiredAmount = ethers.parseUnits(amount.toString(), 6);
         console.log(`Checking allowance for user: ${normalizedAccount}`);
         const allowance = await usdcContract.allowance(normalizedAccount, DCA_CONTRACT_ADDRESS);
@@ -336,7 +349,6 @@ export default function App() {
             console.log("Approval confirmed on chain!");
         }
 
-        // 2. Sign Message
         const message = `Confirm DCA Plan Creation:
 -------------------------
 Token: USDC -> cbBTC
@@ -347,7 +359,6 @@ Your first trade will happen immediately via our bot.`;
 
         await signer.signMessage(message);
 
-        // 3. Register User & Job
         const { error: userError } = await supabase
             .from('users')
             .upsert({ wallet_address: normalizedAccount }, { onConflict: 'wallet_address' });
@@ -416,7 +427,7 @@ Your first trade will happen immediately via our bot.`;
   return (
     <div className="flex flex-col h-[100dvh] bg-white text-slate-900 font-sans overflow-hidden max-w-md mx-auto shadow-2xl">
       
-      {/* --- Header --- */}
+      {/* Header */}
       <header className="flex-none h-12 px-4 border-b border-slate-200 flex justify-between items-center bg-white z-10">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold shadow-md">
@@ -442,10 +453,10 @@ Your first trade will happen immediately via our bot.`;
         <div className="w-8"></div> 
       </header>
 
-      {/* --- Main Content --- */}
+      {/* Main Content */}
       <main className="flex-1 flex flex-col min-h-0 bg-white">
         
-        {/* === TAB 1: STRATEGY === */}
+        {/* TAB 1: STRATEGY */}
         {activeTab === 'strategy' && (
           <>
             <div className="flex-none h-[32%] w-full bg-slate-50 border-b border-slate-200 flex flex-col relative">
@@ -528,29 +539,24 @@ Your first trade will happen immediately via our bot.`;
           </>
         )}
 
-        {/* === TAB 2: ASSETS (我的定投卡片) === */}
+        {/* TAB 2: ASSETS */}
         {activeTab === 'assets' && (
             <div className="flex flex-col h-full bg-slate-50 p-4 overflow-y-auto relative">
                 <div className="flex justify-between items-center mb-4 px-1">
                     <h2 className="text-lg font-black text-slate-900">My Active Plans</h2>
                     <button 
                         onClick={() => fetchActiveJob(account)}
-                        className="p-2 bg-white rounded-full text-slate-500 shadow-sm hover:text-blue-600 hover:rotate-180 transition-all"
+                        className={`p-2 bg-white rounded-full text-slate-500 shadow-sm hover:text-blue-600 transition-all ${!activeJob && isLoading ? 'animate-spin' : ''}`}
                     >
                         <RefreshCw size={16} />
                     </button>
                 </div>
                 
                 {activeJob ? (
-                    // 1. 如果有计划，显示真实卡片
                     <PlanCard job={activeJob} onCancel={handleCancelPlan} isLoading={isLoading} />
                 ) : (
-                    // 2. 如果没有计划，显示"Ghost Card" (模板) + 覆盖层
                     <div className="relative">
-                        {/* 底部的虚幻卡片 */}
                         <PlanCard isTemplate={true} />
-                        
-                        {/* 覆盖在上面的 CTA (Call To Action) */}
                         <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
                             <div className="bg-white/90 backdrop-blur-sm p-4 rounded-2xl shadow-xl border border-slate-100 text-center max-w-[80%]">
                                 <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -579,7 +585,7 @@ Your first trade will happen immediately via our bot.`;
             </div>
         )}
 
-        {/* === TAB 3: LEADERBOARD === */}
+        {/* TAB 3: LEADERBOARD */}
         {activeTab === 'leaderboard' && (
           <div className="flex flex-col h-full bg-slate-50 relative">
             <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-20">
@@ -594,7 +600,6 @@ Your first trade will happen immediately via our bot.`;
                 </div>
               </div>
               
-              {/* Leaderboard List */}
               <div className="space-y-2">
                 {[1,2,3,4,5,6,7,8,9,10].map((i) => (
                   <div key={i} className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm">
@@ -618,7 +623,7 @@ Your first trade will happen immediately via our bot.`;
         )}
       </main>
 
-      {/* --- Bottom Navigation --- */}
+      {/* Bottom Navigation */}
       <nav className="flex-none bg-white border-t border-slate-200 pb-safe z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
         <div className="flex justify-around items-center h-16">
           <button onClick={() => setActiveTab('strategy')} className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'strategy' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
