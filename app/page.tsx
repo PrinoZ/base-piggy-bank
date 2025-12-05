@@ -71,14 +71,12 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
         const startTime = new Date(job.created_at).getTime();
         const now = new Date().getTime();
         const freqMs = (job.frequency_seconds || 86400) * 1000;
-        // 至少显示1次
         const executions = Math.max(1, Math.floor((now - startTime) / freqMs) + 1);
         
         const totalInvested = executions * (job.amount_per_trade || 0);
-        // 简单估算 BTC 数量
         const estimatedBTC = totalInvested / CURRENT_ASSET_PRICE;
         
-        // 估算 ROI (假设价格涨了5%来演示)
+        // 估算 ROI
         const currentVal = estimatedBTC * CURRENT_ASSET_PRICE * 1.05; 
         const roi = ((currentVal - totalInvested) / totalInvested) * 100;
 
@@ -119,11 +117,9 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
         }
     };
 
-    // 修复 Cancel 按钮点击
     const handleCancelClick = (e: React.MouseEvent) => {
-        e.stopPropagation(); // 阻止冒泡
-        e.preventDefault(); // 阻止默认行为
-        console.log("Cancel button clicked for job:", job?.id);
+        e.stopPropagation();
+        e.preventDefault();
         if (!isTemplate && onCancel && job?.id) {
             onCancel(job.id);
         }
@@ -240,7 +236,6 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
                         </div>
                     </div>
 
-                    {/* 修复后的 Cancel 按钮 */}
                     <button 
                         onClick={handleCancelClick}
                         disabled={isTemplate || isLoading}
@@ -461,7 +456,6 @@ Your first trade will happen immediately via our bot.`;
     }
   };
 
-  // 修复后的 handleCancelPlan
   const handleCancelPlan = async (jobId: any) => {
     const confirmCancel = window.confirm("Are you sure you want to stop this plan?");
     if (!confirmCancel) return;
@@ -472,10 +466,7 @@ Your first trade will happen immediately via our bot.`;
         .update({ status: 'CANCELLED' })
         .eq('id', jobId);
       if (error) throw error;
-      
-      // 更新成功后，清空本地状态
       setActiveJob(null);
-      // 重新拉取以防万一
       fetchActiveJob(account); 
     } catch (error) { alert("Failed to cancel plan"); } 
     finally { setIsLoading(false); }
@@ -516,11 +507,10 @@ Your first trade will happen immediately via our bot.`;
         {/* TAB 1: STRATEGY */}
         {activeTab === 'strategy' && (
           <div className="flex flex-col h-full">
-            {/* 上半部分：图表区 (扩大比例) */}
+            {/* 上半部分：图表区 */}
             <div className="flex-1 bg-slate-50 border-b border-slate-200 flex flex-col relative min-h-0">
               <div className="px-5 pt-4 pb-2 flex-none">
                 <div className="w-full">
-                    {/* 1. 大数字 + Total Invested */}
                     <div className="flex items-baseline gap-2">
                         <div className="text-3xl font-black text-slate-900 tracking-tighter leading-none">
                            {calculation.totalCoins.toFixed(4)}
@@ -531,7 +521,7 @@ Your first trade will happen immediately via our bot.`;
                         </span>
                     </div>
                     
-                    {/* 2. 进度条 (宽度 50%) */}
+                    {/* 进度条 */}
                     <div className="mt-3 w-1/2">
                         <div className="flex justify-between items-end mb-1">
                             <span className="text-[9px] font-bold text-blue-600">
@@ -570,8 +560,8 @@ Your first trade will happen immediately via our bot.`;
               </div>
             </div>
 
-            {/* 下半部分：控制区 (固定高度) */}
-            <div className="flex-none p-5 bg-white space-y-5">
+            {/* 下半部分：控制区 (添加回 Duration 滑块) */}
+            <div className="flex-none p-5 bg-white space-y-3">
               <div>
                 <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
                   <span>Amount per Trade</span>
@@ -604,8 +594,13 @@ Your first trade will happen immediately via our bot.`;
                     ))}
                   </div>
               </div>
+
+              {/* === 修复：加回 Duration 滑块 === */}
+              <div className="pt-1">
+                <CompactSlider label="Duration" value={duration} min={1} max={48} unit="Months" onChange={setDuration} />
+              </div>
               
-              <div className="pt-2">
+              <div className="pt-1">
                 <button className={`w-full text-white font-bold text-lg py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 active:bg-blue-700 active:scale-[0.98] shadow-blue-600/20'}`} onClick={handleStartDCA} disabled={isLoading}>
                   {isLoading ? 'Processing...' : (<>Start DCA <ChevronRight size={20} /></>)}
                 </button>
