@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { ethers } from 'ethers'; 
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank, LayoutGrid, XCircle, RefreshCw, Plus, ChevronDown, ChevronUp, Share2, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank, LayoutGrid, XCircle, RefreshCw, Plus, ChevronDown, ChevronUp, Share2, AlertTriangle, ExternalLink, Info } from 'lucide-react';
 
 // ==========================================
 //              CONSTANTS & TYPES
@@ -105,14 +105,33 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
 
     const isLowBalance = !isTemplate && usdcBalance !== null && Number(usdcBalance) < Number(job?.amount_per_trade);
 
-    const handleShare = (e: any) => {
-        e.stopPropagation();
+    // === 修复分享按钮逻辑 ===
+    const handleShare = async (e: any) => {
+        e.stopPropagation(); // 防止触发卡片折叠
+        
         const text = `I'm auto-investing cbBTC via @BasePiggyBank! 🐷\n\nAccumulated: ${stats.btc.toFixed(4)} BTC\nInvested: $${stats.usd}\n\nStart your journey on Base! 🚀`;
-        if (navigator.share) {
-            navigator.share({ title: 'Base Piggy Bank', text: text, url: window.location.href }).catch(console.error);
-        } else {
-            navigator.clipboard.writeText(text);
-            alert("Share text copied to clipboard!");
+        const url = window.location.href;
+
+        try {
+            // 优先尝试原生分享 (Mobile / Safari)
+            if (navigator.share) {
+                await navigator.share({
+                    title: 'Base Piggy Bank',
+                    text: text,
+                    url: url
+                });
+            } else {
+                // 回退：复制到剪贴板 (PC Chrome/Edge)
+                throw new Error("Share API not supported");
+            }
+        } catch (error) {
+            // 复制到剪贴板作为保底方案
+            try {
+                await navigator.clipboard.writeText(`${text}\n${url}`);
+                alert("📋 Results copied to clipboard! You can paste it to Twitter/Farcaster.");
+            } catch (clipboardError) {
+                alert("Failed to copy results.");
+            }
         }
     };
 
@@ -264,7 +283,9 @@ export default function App() {
   const [amount, setAmount] = useState<number | ''>(100);
   const [freqIndex, setFreqIndex] = useState(0); 
   const [duration, setDuration] = useState(12); 
-  const [targetGoal, setTargetGoal] = useState<number>(0.1); 
+  
+  // === 修复 1：Target Goal 允许为空字符串 ===
+  const [targetGoal, setTargetGoal] = useState<number | ''>(0.1); 
   
   useEffect(() => {
     const init = async () => {
@@ -279,6 +300,7 @@ export default function App() {
 
   const calculation = useMemo(() => {
     const safeAmount = amount === '' ? 0 : amount;
+    const safeGoal = targetGoal === '' ? 0.1 : targetGoal; // 防止除以0或空
     const selectedFreq = FREQUENCIES[freqIndex];
     const investmentsPerMonth = 30 / selectedFreq.days; 
     const monthlyAmount = safeAmount * investmentsPerMonth;
@@ -299,8 +321,8 @@ export default function App() {
     }
 
     const finalValue = accumulatedCoins * currentPrice;
-    return { data, totalInvested, finalValue, totalCoins: accumulatedCoins };
-  }, [amount, freqIndex, duration]);
+    return { data, totalInvested, finalValue, totalCoins: accumulatedCoins, safeGoal };
+  }, [amount, freqIndex, duration, targetGoal]);
 
   // --- Functions ---
 
@@ -523,16 +545,16 @@ Your first trade will happen immediately via our bot.`;
                     <div className="mt-3 w-1/2">
                         <div className="flex justify-between items-end mb-1">
                             <span className="text-[9px] font-bold text-blue-600">
-                                Goal: {targetGoal}
+                                Goal: {calculation.safeGoal}
                             </span>
                             <span className="text-[9px] font-bold text-slate-400">
-                                {((calculation.totalCoins / targetGoal) * 100).toFixed(0)}%
+                                {((calculation.totalCoins / calculation.safeGoal) * 100).toFixed(0)}%
                             </span>
                         </div>
                         <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
                             <div 
                                 className="h-full bg-blue-600 rounded-full transition-all duration-1000"
-                                style={{ width: `${Math.min((calculation.totalCoins / targetGoal) * 100, 100)}%` }}
+                                style={{ width: `${Math.min((calculation.totalCoins / calculation.safeGoal) * 100, 100)}%` }}
                             ></div>
                         </div>
                     </div>
@@ -541,7 +563,6 @@ Your first trade will happen immediately via our bot.`;
               
               <div className="flex-1 w-full min-h-0 pt-2 pb-2">
                 <ResponsiveContainer width="100%" height="100%">
-                  {/* 恢复了图表间距 */}
                   <AreaChart data={calculation.data} margin={{ top: 5, right: 35, left: 20, bottom: 5 }}>
                     <defs>
                       <linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1">
@@ -551,7 +572,6 @@ Your first trade will happen immediately via our bot.`;
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                     <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" minTickGap={30} />
-                    {/* 恢复了 Y 轴显示 */}
                     <YAxis hide={false} axisLine={false} tickLine={false} width={35} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(0)}k` : val} />
                     <Tooltip contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px', fontSize: '11px', color: 'white', padding: '8px' }} itemStyle={{ padding: 0 }} formatter={(val: any) => [`${Number(val).toFixed(4)}`, 'cbBTC']} labelFormatter={(label) => `Date: ${label}`} labelStyle={{ color: '#94a3b8', marginBottom: '4px' }} />
                     <Area type="monotone" dataKey="coins" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCoins)" animationDuration={1000} />
@@ -560,7 +580,7 @@ Your first trade will happen immediately via our bot.`;
               </div>
             </div>
 
-            {/* 下半部分：控制区 (添加回 Duration 滑块) */}
+            {/* 下半部分：控制区 */}
             <div className="flex-none p-5 bg-white space-y-3">
               <div>
                 <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
@@ -573,6 +593,7 @@ Your first trade will happen immediately via our bot.`;
                 </div>
               </div>
               
+              {/* === 修复 2：Target Goal 增加备注信息，允许清空 === */}
               <div>
                 <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
                   <span>Target Goal</span>
@@ -580,7 +601,20 @@ Your first trade will happen immediately via our bot.`;
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">🎯</span>
-                  <input type="number" value={targetGoal} step="0.01" onChange={(e) => setTargetGoal(Number(e.target.value))} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-9 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" />
+                  <input 
+                    type="number" 
+                    value={targetGoal} 
+                    step="0.01" 
+                    placeholder="Set a visual goal"
+                    onChange={(e) => setTargetGoal(e.target.value === '' ? '' : Number(e.target.value))} 
+                    className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-9 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" 
+                  />
+                </div>
+                <div className="flex items-center gap-1 mt-1.5 opacity-60">
+                    <Info size={10} className="text-slate-400" />
+                    <p className="text-[9px] text-slate-400 font-medium leading-tight">
+                        This is a visual goal for motivation only. It does not affect your DCA plan execution.
+                    </p>
                 </div>
               </div>
 
