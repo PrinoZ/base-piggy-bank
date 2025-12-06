@@ -59,10 +59,10 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
     const [history, setHistory] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
     
-    // ✅ State for real statistics based on DB
+    // State for real statistics based on DB
     const [realStats, setRealStats] = useState({ btc: 0, usd: 0, endDate: 'N/A' });
 
-    // 1. Fetch Real Statistics
+    // 1. Fetch Real Statistics (Sum of successful transactions)
     const fetchRealStats = async () => {
         if (isTemplate || !job?.id) return;
 
@@ -235,7 +235,15 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                                     const statusText = isSuccess ? 'text-slate-700' : 'text-red-600';
                                     
                                     return (
-                                        <div key={tx.id} className="flex justify-between items-center p-3 border-b border-slate-100 last:border-0 hover:bg-slate-100/50">
+                                        // ✅ 修改：整行变为可点击的链接
+                                        <a 
+                                            key={tx.id} 
+                                            href={`https://basescan.org/tx/${tx.tx_hash}`} 
+                                            target="_blank" 
+                                            rel="noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="flex justify-between items-center p-3 border-b border-slate-100 last:border-0 hover:bg-slate-100/80 transition-colors cursor-pointer block"
+                                        >
                                             <div className="flex items-center gap-2">
                                                 <div className={`w-1.5 h-1.5 rounded-full ${statusColor}`}></div>
                                                 <div className="flex flex-col">
@@ -244,19 +252,13 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                                                 </div>
                                             </div>
                                             
-                                            <a 
-                                                href={`https://basescan.org/tx/${tx.tx_hash}`} 
-                                                target="_blank" 
-                                                rel="noreferrer"
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="flex items-center gap-2 p-1.5 -mr-1.5 rounded-lg hover:bg-slate-100 transition-colors group cursor-pointer"
-                                            >
-                                                <span className="text-[10px] font-mono text-slate-500 group-hover:text-blue-700 transition-colors">${tx.amount_usdc}</span>
-                                                <div className="text-blue-600 bg-blue-50 p-1 rounded group-hover:bg-blue-100 transition-colors">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] font-mono text-slate-500">${tx.amount_usdc}</span>
+                                                <div className="text-blue-600 bg-blue-50 p-1 rounded">
                                                     <ExternalLink size={10} />
                                                 </div>
-                                            </a>
-                                        </div>
+                                            </div>
+                                        </a>
                                     );
                                 })
                             ) : (
@@ -316,7 +318,7 @@ export default function App() {
     init();
   }, []);
 
-  // ✅ 核心修改：模拟真实市场价格波动 (Simulated Volatility)
+  // ✅ 修改：引入图表波动模拟 (Simulated Volatility)
   const calculation = useMemo(() => {
     const safeAmount = amount === '' ? 0 : amount;
     const safeGoal = targetGoal === '' ? 1 : targetGoal; 
@@ -331,19 +333,14 @@ export default function App() {
     const data = [];
     
     for (let i = 0; i <= duration; i++) {
-        // --- 价格模拟算法 ---
-        // 1. 趋势 (Trend): 稍微向上 (i * 0.01)
-        // 2. 周期 (Cycle): 正弦波 (Math.sin) 模拟牛熊转换
-        // 3. 噪音 (Noise): 随机波动 (Math.random)
-        const cycle = Math.sin(i * 0.5) * 0.15; // 15% 的周期性波动
-        const noise = (Math.random() - 0.5) * 0.1; // 10% 的随机噪音
-        const trend = i * 0.01; // 1% 的月度增长趋势
+        // --- 模拟价格算法 ---
+        const cycle = Math.sin(i * 0.5) * 0.15; 
+        const noise = (Math.random() - 0.5) * 0.1; 
+        const trend = i * 0.01; 
         
-        // 当月模拟价格
         const simulatedPrice = basePrice * (1 + cycle + noise + trend);
 
         if (i > 0) {
-             // DCA 核心：价格低时买更多，价格高时买更少
              accumulatedCoins += monthlyAmount / simulatedPrice;
         }
         
@@ -351,12 +348,10 @@ export default function App() {
             month: i,
             dateLabel: getFutureDateLabel(i),
             coins: accumulatedCoins,
-            // 图表 value 使用模拟后的市值，这样曲线会更真实地起伏
-            value: accumulatedCoins * simulatedPrice, 
+            value: accumulatedCoins * simulatedPrice, // 使用模拟价格
         });
     }
 
-    // 最终显示的 Value 用最后一月的模拟价格计算
     const finalPrice = basePrice * (1 + Math.sin(duration * 0.5) * 0.15 + (Math.random() - 0.5) * 0.1 + duration * 0.01);
     const finalValue = accumulatedCoins * finalPrice;
     
@@ -521,7 +516,6 @@ This signature verifies your ownership of the wallet.`;
             throw new Error(result.error || 'Failed to create plan');
         }
 
-        // ✅ Updated Alert Message
         alert(`🎉 Plan Created Successfully!\n\n⏳ The bot will execute your first buy of $${amount} within 1 minute.\n\nPlease utilize the refresh button on the plan card to see your new transaction.`);
         
         if (result.data) {
