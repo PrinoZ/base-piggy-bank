@@ -6,7 +6,6 @@ const PRIVATE_KEY = Deno.env.get('BACKEND_WALLET_PRIVATE_KEY')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-// === 配置区域 ===
 const CONTRACT_ADDRESS = "0x9432f3cf09e63d4b45a8e292ad4d38d2e677ad0c" 
 const RPC_URL = "https://mainnet.base.org" 
 const AERODROME_FACTORY = "0x420dd381b31aef6683db6b902084cb0ffece40da"
@@ -41,7 +40,6 @@ Deno.serve(async (req) => {
     const wallet = new ethers.Wallet(PRIVATE_KEY, provider)
     const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, wallet)
 
-    // === Gas 锁定配置 (保留你的 V4 设置) ===
     const txOptions = {
         maxPriorityFeePerGas: ethers.parseUnits('0.01', 'gwei'),
         maxFeePerGas: ethers.parseUnits('0.1', 'gwei'),
@@ -52,7 +50,7 @@ Deno.serve(async (req) => {
 
     for (const job of jobs) {
       let txHash = null;
-      let status = 'SUCCESS'; // 默认为成功，如果在 catch 里会改为 FAILED
+      let status = 'SUCCESS'; // 默认成功
       let errorMessage = null;
 
       try {
@@ -71,7 +69,7 @@ Deno.serve(async (req) => {
           factory: AERODROME_FACTORY
         }]
 
-        // === 发送交易 (真交易) ===
+        // === 发送交易 ===
         const tx = await contract.executeDCA(
           cleanUserAddr, 
           amountIn, 
@@ -84,18 +82,19 @@ Deno.serve(async (req) => {
         console.log(`Tx sent: ${tx.hash}`)
         txHash = tx.hash;
 
-        // 等待几个区块确认 (可选，为了更快响应可以不加 await tx.wait())
+        // 【可选】如果你想等待链上确认（会增加运行时间，但能捕捉链上失败）
         // await tx.wait(); 
 
       } catch (err: any) {
         console.error(`Job ${job.id} failed:`, err)
-        status = 'FAILED';
-        errorMessage = String(err.message || err).slice(0, 200); // 截取错误信息防止太长
-        // 即使失败，我们也生成一个假的 Hash 或者记录 ERROR，以便前端能显示
+        // 🛑 核心修改：一旦报错，立即标记为失败
+        status = 'FAILED'; 
+        // 生成一个包含 Error 的假 Hash，或者保留 null
         txHash = "0xError" + Math.random().toString(16).substr(2, 8); 
+        errorMessage = String(err.message || err).slice(0, 100);
       }
 
-      // === 关键修改：无论成功还是失败，都写入数据库 ===
+      // === 写入数据库 (无论是成功还是失败) ===
       const { error: logError } = await supabase
         .from('dca_transactions')
         .insert({
@@ -103,14 +102,13 @@ Deno.serve(async (req) => {
             user_address: job.user_address, 
             amount_usdc: job.amount_per_trade,
             tx_hash: txHash,
-            status: status, // 这里会记录 SUCCESS 或 FAILED
+            status: status, // <--- 关键：这里会写入 'FAILED'
             created_at: new Date().toISOString()
         });
           
       if (logError) console.error("Failed to log transaction:", logError);
 
-      // 只有成功时才更新下次运行时间？
-      // 通常建议：即使失败也更新时间，或者重试几次。这里我们先按原逻辑：无论结果如何都更新时间，防止卡死
+      // 更新下次运行时间 (即使失败也更新，防止卡死)
       const nextRun = new Date(new Date().getTime() + job.frequency_seconds * 1000)
       
       await supabase
