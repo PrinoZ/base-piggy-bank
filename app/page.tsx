@@ -83,25 +83,33 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
 
     const stats = calculateStats();
 
-    // 加载历史记录
-    useEffect(() => {
+    // 独立的数据获取函数
+    const fetchHistory = async () => {
         if (isTemplate || !job?.id) return;
+        setLoadingHistory(true);
+        console.log("Fetching history for job:", job.id);
+        
+        const { data, error } = await supabase
+            .from('dca_transactions')
+            .select('*')
+            .eq('job_id', job.id)
+            .order('created_at', { ascending: false })
+            .limit(10);
 
-        if (isExpanded || refreshTrigger > 0) {
-            setLoadingHistory(true);
-            supabase
-                .from('dca_transactions')
-                .select('*')
-                .eq('job_id', job.id)
-                .order('created_at', { ascending: false })
-                .limit(10)
-                .then(({ data, error }) => {
-                    if (error) console.error("History fetch error:", error);
-                    setHistory(data || []);
-                    setLoadingHistory(false);
-                });
+        if (error) {
+            console.error("History fetch error:", error);
+        } else {
+            setHistory(data || []);
         }
-    }, [isExpanded, job, isTemplate, refreshTrigger]);
+        setLoadingHistory(false);
+    };
+
+    // 监听展开动作和全局刷新
+    useEffect(() => {
+        if (isExpanded || refreshTrigger > 0) {
+            fetchHistory();
+        }
+    }, [isExpanded, refreshTrigger, job?.id]);
 
     const isLowBalance = !isTemplate && usdcBalance !== null && Number(usdcBalance) < Number(job?.amount_per_trade);
 
@@ -210,7 +218,16 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
 
                     <div className="mb-4">
                         <div className="flex justify-between items-center mb-2">
-                            <p className="text-[10px] text-slate-500 font-bold uppercase">Recent Transactions</p>
+                            <div className="flex items-center gap-2">
+                                <p className="text-[10px] text-slate-500 font-bold uppercase">Recent Transactions</p>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); fetchHistory(); }}
+                                    className={`p-1 rounded-full bg-slate-100 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors ${loadingHistory ? 'animate-spin' : ''}`}
+                                    title="Refresh Transactions"
+                                >
+                                    <RefreshCw size={10} />
+                                </button>
+                            </div>
                             {loadingHistory && <span className="text-[9px] text-blue-500 animate-pulse">Updating...</span>}
                         </div>
                         
@@ -241,9 +258,9 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                                 ))
                             ) : (
                                 <div className="p-4 text-center text-[10px] text-slate-400">
-                                    {loadingHistory ? "Loading..." : "No transactions yet."}
+                                    {loadingHistory ? "Loading..." : "No transactions found."}
                                     <br/>
-                                    <span className="text-[8px] opacity-70">(History appears after bot execution)</span>
+                                    <span className="text-[8px] opacity-70">(Check Supabase RLS policies if list is empty)</span>
                                 </div>
                             )}
                         </div>
@@ -275,15 +292,14 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState(false); 
   const [refreshTrigger, setRefreshTrigger] = useState(0); 
   const [activeJob, setActiveJob] = useState(null); 
-  const [isMounted, setIsMounted] = useState(false); // <--- 新增：用于解决 Recharts SSR 问题
+  const [isMounted, setIsMounted] = useState(false); 
   
   // Strategy State
   const [amount, setAmount] = useState<number | ''>(100);
   const [freqIndex, setFreqIndex] = useState(0); 
   const [duration, setDuration] = useState(12); 
-  const [targetGoal, setTargetGoal] = useState<number | ''>(0.1); 
+  const [targetGoal, setTargetGoal] = useState<number | ''>(1); 
   
-  // 初始化 Mount 状态
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -300,7 +316,7 @@ export default function App() {
 
   const calculation = useMemo(() => {
     const safeAmount = amount === '' ? 0 : amount;
-    const safeGoal = targetGoal === '' ? 0.1 : targetGoal; 
+    const safeGoal = targetGoal === '' ? 1 : targetGoal; 
     const selectedFreq = FREQUENCIES[freqIndex];
     const investmentsPerMonth = 30 / selectedFreq.days; 
     const monthlyAmount = safeAmount * investmentsPerMonth;
@@ -577,9 +593,8 @@ Your first trade will happen immediately via our bot.`;
               </div>
               
               <div className="flex-1 w-full min-h-0 pt-2 pb-2">
-                {/* 核心修复：只有在客户端 Mount 后才渲染图表 */}
                 {isMounted ? (
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minHeight={200}>
                         <AreaChart data={calculation.data} margin={{ top: 5, right: 35, left: 20, bottom: 5 }}>
                         <defs>
                             <linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1">
