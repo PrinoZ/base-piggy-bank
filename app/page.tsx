@@ -83,7 +83,7 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
 
     const stats = calculateStats();
 
-    // 独立的数据获取函数 (读取依然走 Supabase 直接读取，因为我们设置了 public select)
+    // 独立的数据获取函数
     const fetchHistory = async () => {
         if (isTemplate || !job?.id) return;
         setLoadingHistory(true);
@@ -287,7 +287,8 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false); 
   const [isRefreshing, setIsRefreshing] = useState(false); 
   const [refreshTrigger, setRefreshTrigger] = useState(0); 
-  const [activeJob, setActiveJob] = useState(null); 
+  // ✅ 状态改为数组，支持多计划
+  const [activeJobs, setActiveJobs] = useState<any[]>([]); 
   const [isMounted, setIsMounted] = useState(false); 
   
   const [amount, setAmount] = useState<number | ''>(100);
@@ -340,15 +341,14 @@ export default function App() {
   const handleRefresh = async (userAddr = account) => {
       if (!userAddr) return;
       setIsRefreshing(true);
-      await fetchActiveJob(userAddr);
+      await fetchActiveJobs(userAddr); 
       await fetchUsdcBalance(userAddr);
       setRefreshTrigger(prev => prev + 1);
       setTimeout(() => setIsRefreshing(false), 800);
   };
 
-  // ✅ 【修复 1】: 这里的查询逻辑已经修改，增加了 order 和 limit
-  // 这样即使有 47 个重复计划，也只会取最新创建的 1 个，不会再报 PGRST116 错误
-  const fetchActiveJob = async (userAddr = account) => {
+  // ✅ 获取该用户所有 ACTIVE 的计划
+  const fetchActiveJobs = async (userAddr = account) => {
     try {
       if (!userAddr) return;
       const normalizedAddr = userAddr.toLowerCase();
@@ -358,13 +358,11 @@ export default function App() {
         .select('*')
         .eq('user_address', normalizedAddr) 
         .eq('status', 'ACTIVE')
-        .order('created_at', { ascending: false }) // 按时间倒序，最新的在前
-        .limit(1)                                  // 强制只取 1 条
-        .maybeSingle();                            // 现在安全了
+        .order('created_at', { ascending: false }); // 按时间倒序
       
       if (error) { console.error("Supabase Read Error:", error); return; }
-      setActiveJob(data); 
-    } catch (error) { console.error("Error fetching job:", error); }
+      setActiveJobs(data || []); // 存入数组
+    } catch (error) { console.error("Error fetching jobs:", error); }
   };
 
   const fetchUsdcBalance = async (userAddr: string) => {
@@ -499,11 +497,11 @@ This signature verifies your ownership of the wallet.`;
 
         alert(`🎉 Success! Plan Created.\n\nThe bot will execute your first buy of $${amount} shortly.`);
         
-        if (result.data) { 
-            setActiveJob(result.data);
-            setRefreshTrigger(prev => prev + 1); 
-        } else { 
-            await handleRefresh(normalizedAccount); 
+        if (result.data) {
+             setActiveJobs(prev => [result.data, ...prev]);
+             setRefreshTrigger(prev => prev + 1); 
+        } else {
+             await handleRefresh(normalizedAccount);
         }
         
         setActiveTab('assets'); 
@@ -520,8 +518,7 @@ This signature verifies your ownership of the wallet.`;
 
   // --- 调用 API 取消计划 ---
   const handleCancelPlan = async (jobId: any) => {
-    const confirmCancel = window.confirm("Are you sure you want to stop this plan?");
-    if (!confirmCancel) return;
+    // ✅ 已移除 window.confirm，直接发起签名请求
     setIsLoading(true);
     
     try {
@@ -553,7 +550,8 @@ This signature proves you own this plan.`;
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Failed to cancel');
 
-      setActiveJob(null);
+      // 成功取消后，从前端列表中移除该计划
+      setActiveJobs(prev => prev.filter(job => job.id !== jobId));
       handleRefresh(account); 
 
     } catch (error: any) { 
@@ -631,7 +629,6 @@ This signature proves you own this plan.`;
                 </div>
               </div>
               
-              {/* ✅ 【修复 2】: 这里的 CSS 布局已优化，使用 flex-1 替代 h-64，解决手机重叠问题 */}
               <div className="flex-1 w-full min-h-0 flex flex-col px-1 py-2">
                 <div className="flex-1 w-full min-h-[180px]"> 
                     {isMounted ? (
@@ -645,7 +642,6 @@ This signature proves you own this plan.`;
                             </defs>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                             <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" minTickGap={30} />
-                            {/* YAxis 宽度调小到 30，字体调小到 9 */}
                             <YAxis hide={false} axisLine={false} tickLine={false} width={30} tick={{ fontSize: 9, fill: '#94a3b8' }} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(0)}k` : val} />
                             <Tooltip contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px', fontSize: '11px', color: 'white', padding: '8px' }} itemStyle={{ padding: 0 }} formatter={(val: any) => [`${Number(val).toFixed(4)}`, 'cbBTC']} labelFormatter={(label) => `Date: ${label}`} labelStyle={{ color: '#94a3b8', marginBottom: '4px' }} />
                             <Area type="monotone" dataKey="coins" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCoins)" animationDuration={1000} />
@@ -742,7 +738,7 @@ This signature proves you own this plan.`;
         {activeTab === 'assets' && (
             <div className="flex flex-col h-full bg-slate-50 p-4 overflow-y-auto relative">
                 <div className="flex justify-between items-center mb-4 px-1">
-                    <h2 className="text-lg font-black text-slate-900">My Active Plans</h2>
+                    <h2 className="text-lg font-black text-slate-900">My Active Plans ({activeJobs.length})</h2>
                     <button 
                         onClick={() => handleRefresh(account)}
                         className={`p-2 bg-white rounded-full text-slate-500 shadow-sm hover:text-blue-600 transition-all ${isRefreshing ? 'animate-spin' : ''}`}
@@ -750,14 +746,20 @@ This signature proves you own this plan.`;
                         <RefreshCw size={16} />
                     </button>
                 </div>
-                {activeJob ? (
-                    <PlanCard 
-                        job={activeJob} 
-                        onCancel={handleCancelPlan} 
-                        isLoading={isLoading} 
-                        usdcBalance={usdcBalance} 
-                        refreshTrigger={refreshTrigger} 
-                    />
+                
+                {activeJobs.length > 0 ? (
+                    <div className="space-y-4"> 
+                        {activeJobs.map((job) => (
+                            <PlanCard 
+                                key={job.id} 
+                                job={job} 
+                                onCancel={handleCancelPlan} 
+                                isLoading={isLoading} 
+                                usdcBalance={usdcBalance} 
+                                refreshTrigger={refreshTrigger} 
+                            />
+                        ))}
+                    </div>
                 ) : (
                     <div className="relative">
                         <PlanCard isTemplate={true} />

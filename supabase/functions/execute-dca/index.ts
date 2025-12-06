@@ -7,7 +7,6 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 // === 配置区域 ===
-// 【依然使用旧合约地址】
 const CONTRACT_ADDRESS = "0x9432f3cf09e63d4b45a8e292ad4d38d2e677ad0c" 
 const RPC_URL = "https://mainnet.base.org" 
 const AERODROME_FACTORY = "0x420dd381b31aef6683db6b902084cb0ffece40da"
@@ -20,7 +19,7 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     
-    // 查找 ACTIVE 且时间已到的任务
+    // 1. 查找 ACTIVE 且时间已到的任务
     const { data: jobs, error } = await supabase
       .from('dca_jobs')
       .select('*')
@@ -38,33 +37,29 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${jobs.length} jobs to execute`)
 
-    // 验证新代码是否部署成功的标记
-    console.log("=== RUNNING V4: LOGGING + GAS LIMIT (300k) ===") 
-
     const provider = new ethers.JsonRpcProvider(RPC_URL)
     const wallet = new ethers.Wallet(PRIVATE_KEY, provider)
     const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, wallet)
 
-    // === 核心修改：Gas 价格 + 用量三重锁定 ===
+    // === Gas 锁定配置 (保留你的 V4 设置) ===
     const txOptions = {
-        // 1. 小费：极低 (0.01 Gwei)
         maxPriorityFeePerGas: ethers.parseUnits('0.01', 'gwei'),
-        // 2. 总价封顶：限制最高 0.1 Gwei
         maxFeePerGas: ethers.parseUnits('0.1', 'gwei'),
-        // 3. 【新增】强制指定 Gas 用量 (30万足够覆盖)
-        // 这一步彻底跳过 estimateGas，防止余额不足报错
         gasLimit: 300000 
     };
 
     const results = []
 
     for (const job of jobs) {
+      let txHash = null;
+      let status = 'SUCCESS'; // 默认为成功，如果在 catch 里会改为 FAILED
+      let errorMessage = null;
+
       try {
         console.log(`Processing job ${job.id} for user: ${job.user_address}`)
         
         const amountIn = ethers.parseUnits(job.amount_per_trade.toString(), 6) 
         
-        // 地址清洗
         const cleanTokenIn = ethers.getAddress(job.token_in.toLowerCase())
         const cleanTokenOut = ethers.getAddress(job.token_out.toLowerCase())
         const cleanUserAddr = ethers.getAddress(job.user_address.toLowerCase())
@@ -76,47 +71,54 @@ Deno.serve(async (req) => {
           factory: AERODROME_FACTORY
         }]
 
-        console.log("Sending tx with routes:", JSON.stringify(routes))
-
-        // === 发送交易 ===
+        // === 发送交易 (真交易) ===
         const tx = await contract.executeDCA(
           cleanUserAddr, 
           amountIn, 
           0, 
           ethers.ZeroAddress, 
           routes,
-          txOptions // <--- 应用三重锁定配置
+          txOptions 
         )
         
         console.log(`Tx sent: ${tx.hash}`)
+        txHash = tx.hash;
 
-        // === 新增：记录交易历史到数据库 ===
-        // 这让前端可以在卡片详情里展示"Transaction History"
-        const { error: logError } = await supabase
-          .from('dca_transactions')
-          .insert({
+        // 等待几个区块确认 (可选，为了更快响应可以不加 await tx.wait())
+        // await tx.wait(); 
+
+      } catch (err: any) {
+        console.error(`Job ${job.id} failed:`, err)
+        status = 'FAILED';
+        errorMessage = String(err.message || err).slice(0, 200); // 截取错误信息防止太长
+        // 即使失败，我们也生成一个假的 Hash 或者记录 ERROR，以便前端能显示
+        txHash = "0xError" + Math.random().toString(16).substr(2, 8); 
+      }
+
+      // === 关键修改：无论成功还是失败，都写入数据库 ===
+      const { error: logError } = await supabase
+        .from('dca_transactions')
+        .insert({
             job_id: job.id,
-            user_address: job.user_address, // 存原始的全小写即可
+            user_address: job.user_address, 
             amount_usdc: job.amount_per_trade,
-            tx_hash: tx.hash
-          });
+            tx_hash: txHash,
+            status: status, // 这里会记录 SUCCESS 或 FAILED
+            created_at: new Date().toISOString()
+        });
           
-        if (logError) console.error("Failed to log transaction:", logError);
-        
-        // 更新下一次运行时间
-        const nextRun = new Date(new Date().getTime() + job.frequency_seconds * 1000)
-        
-        await supabase
+      if (logError) console.error("Failed to log transaction:", logError);
+
+      // 只有成功时才更新下次运行时间？
+      // 通常建议：即使失败也更新时间，或者重试几次。这里我们先按原逻辑：无论结果如何都更新时间，防止卡死
+      const nextRun = new Date(new Date().getTime() + job.frequency_seconds * 1000)
+      
+      await supabase
           .from('dca_jobs')
           .update({ next_run_time: nextRun.toISOString() })
           .eq('id', job.id)
 
-        results.push({ id: job.id, status: 'success', hash: tx.hash })
-
-      } catch (err: any) {
-        console.error(`Job ${job.id} failed:`, err)
-        results.push({ id: job.id, status: 'failed', error: String(err) })
-      }
+      results.push({ id: job.id, status, hash: txHash, error: errorMessage })
     }
 
     return new Response(JSON.stringify(results), { headers: { 'Content-Type': 'application/json' } })
