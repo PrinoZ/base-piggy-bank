@@ -346,16 +346,21 @@ export default function App() {
       setTimeout(() => setIsRefreshing(false), 800);
   };
 
+  // ✅ 【修复 1】: 这里的查询逻辑已经修改，增加了 order 和 limit
+  // 这样即使有 47 个重复计划，也只会取最新创建的 1 个，不会再报 PGRST116 错误
   const fetchActiveJob = async (userAddr = account) => {
     try {
+      if (!userAddr) return;
       const normalizedAddr = userAddr.toLowerCase();
-      // 读取依然走 RLS (Public Select)
+      
       const { data, error } = await supabase
         .from('dca_jobs')
         .select('*')
         .eq('user_address', normalizedAddr) 
         .eq('status', 'ACTIVE')
-        .maybeSingle();
+        .order('created_at', { ascending: false }) // 按时间倒序，最新的在前
+        .limit(1)                                  // 强制只取 1 条
+        .maybeSingle();                            // 现在安全了
       
       if (error) { console.error("Supabase Read Error:", error); return; }
       setActiveJob(data); 
@@ -414,7 +419,7 @@ export default function App() {
       return null;
   };
 
-  // --- 安全核心修改：调用 API 而不是直接操作数据库 ---
+  // --- 调用 API 创建任务 ---
   const handleStartDCA = async () => {
     setIsLoading(true);
     let currentAccount = account;
@@ -513,7 +518,7 @@ This signature verifies your ownership of the wallet.`;
     }
   };
 
-  // --- 安全核心修改：调用 API 取消计划 ---
+  // --- 调用 API 取消计划 ---
   const handleCancelPlan = async (jobId: any) => {
     const confirmCancel = window.confirm("Are you sure you want to stop this plan?");
     if (!confirmCancel) return;
@@ -626,11 +631,12 @@ This signature proves you own this plan.`;
                 </div>
               </div>
               
-              <div className="flex-1 w-full min-h-0 pt-2 pb-2">
-                <div className="w-full h-64 pt-2 pb-2"> 
+              {/* ✅ 【修复 2】: 这里的 CSS 布局已优化，使用 flex-1 替代 h-64，解决手机重叠问题 */}
+              <div className="flex-1 w-full min-h-0 flex flex-col px-1 py-2">
+                <div className="flex-1 w-full min-h-[180px]"> 
                     {isMounted ? (
-                        <ResponsiveContainer width="100%" height="100%" minHeight={200}>
-                            <AreaChart data={calculation.data} margin={{ top: 5, right: 35, left: 20, bottom: 5 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={calculation.data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <defs>
                                 <linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="#2563EB" stopOpacity={0.25}/>
@@ -639,7 +645,8 @@ This signature proves you own this plan.`;
                             </defs>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                             <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" minTickGap={30} />
-                            <YAxis hide={false} axisLine={false} tickLine={false} width={35} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(0)}k` : val} />
+                            {/* YAxis 宽度调小到 30，字体调小到 9 */}
+                            <YAxis hide={false} axisLine={false} tickLine={false} width={30} tick={{ fontSize: 9, fill: '#94a3b8' }} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(0)}k` : val} />
                             <Tooltip contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px', fontSize: '11px', color: 'white', padding: '8px' }} itemStyle={{ padding: 0 }} formatter={(val: any) => [`${Number(val).toFixed(4)}`, 'cbBTC']} labelFormatter={(label) => `Date: ${label}`} labelStyle={{ color: '#94a3b8', marginBottom: '4px' }} />
                             <Area type="monotone" dataKey="coins" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCoins)" animationDuration={1000} />
                             </AreaChart>
