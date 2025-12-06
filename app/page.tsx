@@ -36,6 +36,20 @@ const getFutureDateLabel = (monthsToAdd: number) => {
   return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 };
 
+// 地址截断显示 (例如 0x1234...5678)
+const shortenAddress = (addr: string) => {
+    if (!addr) return 'Unknown';
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+};
+
+// 根据投资金额计算等级称号
+const getTier = (amount: number) => {
+    if (amount >= 1000) return 'Whale 🐋';
+    if (amount >= 500) return 'Shark 🦈';
+    if (amount >= 100) return 'Dolphin 🐬';
+    return 'Shrimp 🦐';
+};
+
 const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
   <div className="w-full">
     <div className="flex justify-between items-center mb-1">
@@ -59,10 +73,8 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
     const [history, setHistory] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
     
-    // State for real statistics based on DB
     const [realStats, setRealStats] = useState({ btc: 0, usd: 0, endDate: 'N/A' });
 
-    // 1. Fetch Real Statistics (Sum of successful transactions)
     const fetchRealStats = async () => {
         if (isTemplate || !job?.id) return;
 
@@ -88,7 +100,6 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
         }
     };
 
-    // 2. Fetch Transaction History List
     const fetchHistory = async () => {
         if (isTemplate || !job?.id) return;
         setLoadingHistory(true);
@@ -235,7 +246,6 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                                     const statusText = isSuccess ? 'text-slate-700' : 'text-red-600';
                                     
                                     return (
-                                        // ✅ 修改：整行变为可点击的链接
                                         <a 
                                             key={tx.id} 
                                             href={`https://basescan.org/tx/${tx.tx_hash}`} 
@@ -299,6 +309,10 @@ export default function App() {
   const [activeJobs, setActiveJobs] = useState<any[]>([]); 
   const [isMounted, setIsMounted] = useState(false); 
   
+  // ✅ NEW: 排行榜状态
+  const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
+  const [userRankData, setUserRankData] = useState<any>(null);
+
   const [amount, setAmount] = useState<number | ''>(100);
   const [freqIndex, setFreqIndex] = useState(0); 
   const [duration, setDuration] = useState(12); 
@@ -318,7 +332,13 @@ export default function App() {
     init();
   }, []);
 
-  // ✅ 修改：引入图表波动模拟 (Simulated Volatility)
+  // ✅ 监听 Tab 切换，如果切到 rank，就刷新排行榜
+  useEffect(() => {
+      if (activeTab === 'leaderboard') {
+          fetchLeaderboard();
+      }
+  }, [activeTab, account]);
+
   const calculation = useMemo(() => {
     const safeAmount = amount === '' ? 0 : amount;
     const safeGoal = targetGoal === '' ? 1 : targetGoal; 
@@ -333,7 +353,6 @@ export default function App() {
     const data = [];
     
     for (let i = 0; i <= duration; i++) {
-        // --- 模拟价格算法 ---
         const cycle = Math.sin(i * 0.5) * 0.15; 
         const noise = (Math.random() - 0.5) * 0.1; 
         const trend = i * 0.01; 
@@ -348,7 +367,7 @@ export default function App() {
             month: i,
             dateLabel: getFutureDateLabel(i),
             coins: accumulatedCoins,
-            value: accumulatedCoins * simulatedPrice, // 使用模拟价格
+            value: accumulatedCoins * simulatedPrice,
         });
     }
 
@@ -367,6 +386,40 @@ export default function App() {
       await fetchUsdcBalance(userAddr);
       setRefreshTrigger(prev => prev + 1);
       setTimeout(() => setIsRefreshing(false), 800);
+  };
+
+  // ✅ 获取排行榜真实数据
+  const fetchLeaderboard = async () => {
+      try {
+          // 查询视图，按投资额倒序，取前 50 名
+          const { data, error } = await supabase
+              .from('leaderboard')
+              .select('*')
+              .order('total_invested', { ascending: false })
+              .limit(50);
+
+          if (error) throw error;
+
+          if (data) {
+              setLeaderboardData(data); // 存入列表数据
+
+              // 计算当前用户的排名信息
+              if (account) {
+                  const myIndex = data.findIndex(u => u.user_address.toLowerCase() === account.toLowerCase());
+                  if (myIndex !== -1) {
+                      setUserRankData({
+                          rank: myIndex + 1,
+                          amount: data[myIndex].total_invested
+                      });
+                  } else {
+                      // 如果前50名里没我，显示 >50
+                      setUserRankData({ rank: '>50', amount: 0 });
+                  }
+              }
+          }
+      } catch (err) {
+          console.error("Fetch leaderboard error:", err);
+      }
   };
 
   const fetchActiveJobs = async (userAddr = account) => {
@@ -537,7 +590,6 @@ This signature verifies your ownership of the wallet.`;
     }
   };
 
-  // --- 调用 API 取消计划 ---
   const handleCancelPlan = async (jobId: any) => {
     setIsLoading(true);
     
@@ -546,7 +598,6 @@ This signature verifies your ownership of the wallet.`;
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
-      // 1. 签名确认取消
       const message = `Authorize Cancellation:
 -------------------------
 Cancel DCA Plan ID: ${jobId}
@@ -555,7 +606,6 @@ This signature proves you own this plan.`;
 
       const signature = await signer.signMessage(message);
 
-      // 2. 调用安全后端 API
       const response = await fetch('/api/cancel-plan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -570,7 +620,6 @@ This signature proves you own this plan.`;
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Failed to cancel');
 
-      // 成功取消后，从前端列表中移除该计划
       setActiveJobs(prev => prev.filter(job => job.id !== jobId));
       handleRefresh(account); 
 
@@ -806,29 +855,38 @@ This signature proves you own this plan.`;
                 <div className="flex justify-between items-start">
                   <div>
                       <p className="text-blue-100 text-xs font-bold uppercase mb-1">Your Rank</p>
-                      <h2 className="text-4xl font-black">#142</h2>
-                      <p className="text-sm font-semibold mt-2 opacity-90 inline-block bg-white/20 px-2 py-0.5 rounded text-white">Shrimp Tier 🦐</p>
+                      {/* ✅ 动态显示用户排名数据 */}
+                      <h2 className="text-4xl font-black">{userRankData ? `#${userRankData.rank}` : '-'}</h2>
+                      <p className="text-sm font-semibold mt-2 opacity-90 inline-block bg-white/20 px-2 py-0.5 rounded text-white">
+                          {userRankData ? getTier(userRankData.amount) : 'Join to Rank'}
+                      </p>
                   </div>
                   <Trophy className="text-yellow-400 opacity-80" size={40} />
                 </div>
               </div>
+              
+              {/* ✅ 渲染真实排行榜列表 */}
               <div className="space-y-2">
-                {[1,2,3,4,5,6,7,8,9,10].map((i) => (
-                  <div key={i} className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${i <= 3 ? 'bg-yellow-100 text-yellow-800 ring-2 ring-yellow-400/20' : 'bg-slate-100 text-slate-600'}`}>
-                        {i}
+                {leaderboardData.length > 0 ? (
+                    leaderboardData.map((user: any, index: number) => (
+                      <div key={user.user_address} className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${index < 3 ? 'bg-yellow-100 text-yellow-800 ring-2 ring-yellow-400/20' : 'bg-slate-100 text-slate-600'}`}>
+                            {index + 1}
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-900 text-sm">{shortenAddress(user.user_address)}</div>
+                            <div className="text-[10px] text-slate-500 font-medium">Trades: {user.total_trades}</div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-slate-900 text-sm font-mono">${user.total_invested} <span className="text-[10px] text-slate-400">Inv</span></div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="font-bold text-slate-900 text-sm">User_{9900+i}.base</div>
-                        <div className="text-[10px] text-slate-500 font-medium">Daily DCA • $50</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-slate-900 text-sm font-mono">{(10.5 - i * 0.5).toFixed(4)} <span className="text-[10px] text-slate-400">cbBTC</span></div>
-                    </div>
-                  </div>
-                ))}
+                    ))
+                ) : (
+                    <div className="text-center text-slate-400 text-sm py-10">Loading Rankings...</div>
+                )}
               </div>
             </div>
           </div>
