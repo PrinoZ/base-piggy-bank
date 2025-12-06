@@ -216,42 +216,47 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                         <div className="flex justify-between items-center mb-2">
                             <div className="flex items-center gap-2">
                                 <p className="text-[10px] text-slate-500 font-bold uppercase">Recent Transactions</p>
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); fetchHistory(); }}
-                                    className={`p-1 rounded-full bg-slate-100 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors ${loadingHistory ? 'animate-spin' : ''}`}
-                                    title="Refresh Transactions"
-                                >
-                                    <RefreshCw size={10} />
-                                </button>
+                                {/* ✅ 已移除右侧的刷新按钮 (RefreshCw) */}
                             </div>
                             {loadingHistory && <span className="text-[9px] text-blue-500 animate-pulse">Updating...</span>}
                         </div>
                         
                         <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden max-h-40 overflow-y-auto">
                             {history.length > 0 ? (
-                                history.map((tx: any) => (
-                                    <div key={tx.id} className="flex justify-between items-center p-3 border-b border-slate-100 last:border-0 hover:bg-slate-100/50">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] font-bold text-slate-700">Success</span>
-                                                <span className="text-[8px] text-slate-400">{new Date(tx.created_at).toLocaleDateString()}</span>
+                                history.map((tx: any) => {
+                                    // ✅ 动态判断状态颜色
+                                    const isSuccess = tx.status === 'SUCCESS';
+                                    const statusColor = isSuccess ? 'bg-green-500' : 'bg-red-500';
+                                    const statusText = isSuccess ? 'text-slate-700' : 'text-red-600';
+                                    
+                                    return (
+                                        <div key={tx.id} className="flex justify-between items-center p-3 border-b border-slate-100 last:border-0 hover:bg-slate-100/50">
+                                            <div className="flex items-center gap-2">
+                                                {/* ✅ 状态点颜色动态化 */}
+                                                <div className={`w-1.5 h-1.5 rounded-full ${statusColor}`}></div>
+                                                <div className="flex flex-col">
+                                                    {/* ✅ 状态文字动态化 (显示真实状态) */}
+                                                    <span className={`text-[10px] font-bold ${statusText}`}>{tx.status}</span>
+                                                    <span className="text-[8px] text-slate-400">{new Date(tx.created_at).toLocaleDateString()}</span>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-mono text-slate-500">${tx.amount_usdc}</span>
+                                            
+                                            {/* ✅ 扩大点击范围：包含金额和图标 */}
                                             <a 
                                                 href={`https://basescan.org/tx/${tx.tx_hash}`} 
                                                 target="_blank" 
                                                 rel="noreferrer"
                                                 onClick={(e) => e.stopPropagation()}
-                                                className="text-blue-600 hover:text-blue-700 bg-blue-50 p-1 rounded"
+                                                className="flex items-center gap-2 p-1.5 -mr-1.5 rounded-lg hover:bg-slate-100 transition-colors group cursor-pointer"
                                             >
-                                                <ExternalLink size={10} />
+                                                <span className="text-[10px] font-mono text-slate-500 group-hover:text-blue-700 transition-colors">${tx.amount_usdc}</span>
+                                                <div className="text-blue-600 bg-blue-50 p-1 rounded group-hover:bg-blue-100 transition-colors">
+                                                    <ExternalLink size={10} />
+                                                </div>
                                             </a>
                                         </div>
-                                    </div>
-                                ))
+                                    );
+                                })
                             ) : (
                                 <div className="p-4 text-center text-[10px] text-slate-400">
                                     {loadingHistory ? "Loading..." : "No transactions found."}
@@ -287,7 +292,6 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false); 
   const [isRefreshing, setIsRefreshing] = useState(false); 
   const [refreshTrigger, setRefreshTrigger] = useState(0); 
-  // ✅ 状态改为数组，支持多计划
   const [activeJobs, setActiveJobs] = useState<any[]>([]); 
   const [isMounted, setIsMounted] = useState(false); 
   
@@ -347,7 +351,6 @@ export default function App() {
       setTimeout(() => setIsRefreshing(false), 800);
   };
 
-  // ✅ 获取该用户所有 ACTIVE 的计划
   const fetchActiveJobs = async (userAddr = account) => {
     try {
       if (!userAddr) return;
@@ -358,10 +361,10 @@ export default function App() {
         .select('*')
         .eq('user_address', normalizedAddr) 
         .eq('status', 'ACTIVE')
-        .order('created_at', { ascending: false }); // 按时间倒序
+        .order('created_at', { ascending: false }); 
       
       if (error) { console.error("Supabase Read Error:", error); return; }
-      setActiveJobs(data || []); // 存入数组
+      setActiveJobs(data || []); 
     } catch (error) { console.error("Error fetching jobs:", error); }
   };
 
@@ -518,7 +521,6 @@ This signature verifies your ownership of the wallet.`;
 
   // --- 调用 API 取消计划 ---
   const handleCancelPlan = async (jobId: any) => {
-    // ✅ 已移除 window.confirm，直接发起签名请求
     setIsLoading(true);
     
     try {
