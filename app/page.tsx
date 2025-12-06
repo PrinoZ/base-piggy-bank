@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank, LayoutGrid, XCircle, RefreshCw, Plus, ChevronDown, ChevronUp, Share2, AlertTriangle, ExternalLink, Info } from 'lucide-react';
 
-// ... (CONSTANTS 和 ERC20_ABI 保持不变) ...
+// === CONSTANTS ===
 const BASE_CHAIN_ID = '0x2105'; 
 const BASE_RPC_URL = 'https://mainnet.base.org';
 const CURRENT_ASSET_PRICE = 96000; 
@@ -29,6 +29,7 @@ const FREQUENCIES = [
   { label: 'Bi-Weekly', days: 14, value: 'Bi-Weekly' }
 ];
 
+// === HELPERS ===
 const getFutureDateLabel = (monthsToAdd: number) => {
   const date = new Date();
   date.setMonth(date.getMonth() + monthsToAdd);
@@ -52,24 +53,17 @@ const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
   </div>
 );
 
-// === 核心修改：PlanCard 接收 refreshTrigger ===
+// === COMPONENTS ===
 const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, refreshTrigger }: any) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [history, setHistory] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
 
-    // 1. 计算累计数据 (改为依赖 history 真实数据更佳，但目前保持估算逻辑或从 history 累加)
+    // 计算统计数据
     const calculateStats = () => {
         if (isTemplate || !job) return { btc: 0, usd: 0, endDate: 'N/A', roi: 0 };
         
-        // 如果有历史记录，优先使用历史记录计算真实投入
         let totalInvested = 0;
-        if (history.length > 0) {
-             // 这里只是简单演示，实际上应该在下面 fetch 完 history 后再算
-             // 为了 UI 响应快，先用估算值，或者你可以遍历 history 累加 amount_usdc
-        }
-
-        // 保持原有的估算逻辑作为兜底
         const startTime = new Date(job.created_at).getTime();
         const now = new Date().getTime();
         const freqMs = (job.frequency_seconds || 86400) * 1000;
@@ -89,11 +83,10 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
 
     const stats = calculateStats();
 
-    // 2. 加载交易历史 (加入 refreshTrigger 依赖)
+    // 加载历史记录
     useEffect(() => {
         if (isTemplate || !job?.id) return;
 
-        // 只要展开了，或者触发了刷新，就去查
         if (isExpanded || refreshTrigger > 0) {
             setLoadingHistory(true);
             supabase
@@ -101,14 +94,14 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                 .select('*')
                 .eq('job_id', job.id)
                 .order('created_at', { ascending: false })
-                .limit(10) // 显示最近10条
+                .limit(10)
                 .then(({ data, error }) => {
                     if (error) console.error("History fetch error:", error);
                     setHistory(data || []);
                     setLoadingHistory(false);
                 });
         }
-    }, [isExpanded, job, isTemplate, refreshTrigger]); // <--- 关键：监听 refreshTrigger
+    }, [isExpanded, job, isTemplate, refreshTrigger]);
 
     const isLowBalance = !isTemplate && usdcBalance !== null && Number(usdcBalance) < Number(job?.amount_per_trade);
 
@@ -218,7 +211,6 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                     <div className="mb-4">
                         <div className="flex justify-between items-center mb-2">
                             <p className="text-[10px] text-slate-500 font-bold uppercase">Recent Transactions</p>
-                            {/* 这里的刷新状态提示 */}
                             {loadingHistory && <span className="text-[9px] text-blue-500 animate-pulse">Updating...</span>}
                         </div>
                         
@@ -280,9 +272,10 @@ export default function App() {
   const [account, setAccount] = useState(''); 
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null); 
   const [isLoading, setIsLoading] = useState(false); 
-  const [isRefreshing, setIsRefreshing] = useState(false); // 刷新按钮动画状态
-  const [refreshTrigger, setRefreshTrigger] = useState(0); // 核心：刷新扳机
+  const [isRefreshing, setIsRefreshing] = useState(false); 
+  const [refreshTrigger, setRefreshTrigger] = useState(0); 
   const [activeJob, setActiveJob] = useState(null); 
+  const [isMounted, setIsMounted] = useState(false); // <--- 新增：用于解决 Recharts SSR 问题
   
   // Strategy State
   const [amount, setAmount] = useState<number | ''>(100);
@@ -290,11 +283,16 @@ export default function App() {
   const [duration, setDuration] = useState(12); 
   const [targetGoal, setTargetGoal] = useState<number | ''>(0.1); 
   
+  // 初始化 Mount 状态
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   useEffect(() => {
     const init = async () => {
         const acc = await connectWallet(true); 
         if (acc) {
-            handleRefresh(acc); // 初始化加载
+            handleRefresh(acc); 
         }
     };
     init();
@@ -328,19 +326,12 @@ export default function App() {
 
   // --- Functions ---
 
-  // 统一的刷新入口
   const handleRefresh = async (userAddr = account) => {
       if (!userAddr) return;
       setIsRefreshing(true);
-      
-      // 1. 刷新 Job 状态
       await fetchActiveJob(userAddr);
-      // 2. 刷新余额
       await fetchUsdcBalance(userAddr);
-      // 3. 触发子组件 History 刷新 (通过增加计数器)
       setRefreshTrigger(prev => prev + 1);
-      
-      // 延迟一点停止动画，让用户有感知
       setTimeout(() => setIsRefreshing(false), 800);
   };
 
@@ -483,10 +474,9 @@ Your first trade will happen immediately via our bot.`;
 
         alert(`🎉 Success! Plan Created.\n\nThe bot will execute your first buy of $${amount} shortly.`);
         
-        // 创建成功后，自动触发刷新
         if (insertedJob) { 
             setActiveJob(insertedJob);
-            setRefreshTrigger(prev => prev + 1); // 触发历史刷新（虽然此时还没历史）
+            setRefreshTrigger(prev => prev + 1); 
         } else { 
             await handleRefresh(normalizedAccount); 
         }
@@ -587,21 +577,28 @@ Your first trade will happen immediately via our bot.`;
               </div>
               
               <div className="flex-1 w-full min-h-0 pt-2 pb-2">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={calculation.data} margin={{ top: 5, right: 35, left: 20, bottom: 5 }}>
-                    <defs>
-                      <linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#2563EB" stopOpacity={0.25}/>
-                        <stop offset="95%" stopColor="#2563EB" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                    <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" minTickGap={30} />
-                    <YAxis hide={false} axisLine={false} tickLine={false} width={35} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(0)}k` : val} />
-                    <Tooltip contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px', fontSize: '11px', color: 'white', padding: '8px' }} itemStyle={{ padding: 0 }} formatter={(val: any) => [`${Number(val).toFixed(4)}`, 'cbBTC']} labelFormatter={(label) => `Date: ${label}`} labelStyle={{ color: '#94a3b8', marginBottom: '4px' }} />
-                    <Area type="monotone" dataKey="coins" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCoins)" animationDuration={1000} />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {/* 核心修复：只有在客户端 Mount 后才渲染图表 */}
+                {isMounted ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={calculation.data} margin={{ top: 5, right: 35, left: 20, bottom: 5 }}>
+                        <defs>
+                            <linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#2563EB" stopOpacity={0.25}/>
+                            <stop offset="95%" stopColor="#2563EB" stopOpacity={0}/>
+                            </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                        <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" minTickGap={30} />
+                        <YAxis hide={false} axisLine={false} tickLine={false} width={35} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(0)}k` : val} />
+                        <Tooltip contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px', fontSize: '11px', color: 'white', padding: '8px' }} itemStyle={{ padding: 0 }} formatter={(val: any) => [`${Number(val).toFixed(4)}`, 'cbBTC']} labelFormatter={(label) => `Date: ${label}`} labelStyle={{ color: '#94a3b8', marginBottom: '4px' }} />
+                        <Area type="monotone" dataKey="coins" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCoins)" animationDuration={1000} />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div className="w-full h-full flex items-center justify-center text-slate-300 text-xs">
+                        Loading Chart...
+                    </div>
+                )}
               </div>
             </div>
 
@@ -701,7 +698,7 @@ Your first trade will happen immediately via our bot.`;
                         onCancel={handleCancelPlan} 
                         isLoading={isLoading} 
                         usdcBalance={usdcBalance} 
-                        refreshTrigger={refreshTrigger} // <--- 关键传递
+                        refreshTrigger={refreshTrigger} 
                     />
                 ) : (
                     <div className="relative">
