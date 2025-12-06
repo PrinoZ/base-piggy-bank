@@ -83,11 +83,10 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
 
     const stats = calculateStats();
 
-    // 独立的数据获取函数
+    // 独立的数据获取函数 (读取依然走 Supabase 直接读取，因为我们设置了 public select)
     const fetchHistory = async () => {
         if (isTemplate || !job?.id) return;
         setLoadingHistory(true);
-        console.log("Fetching history for job:", job.id);
         
         const { data, error } = await supabase
             .from('dca_transactions')
@@ -96,15 +95,12 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
             .order('created_at', { ascending: false })
             .limit(10);
 
-        if (error) {
-            console.error("History fetch error:", error);
-        } else {
+        if (!error) {
             setHistory(data || []);
         }
         setLoadingHistory(false);
     };
 
-    // 监听展开动作和全局刷新
     useEffect(() => {
         if (isExpanded || refreshTrigger > 0) {
             fetchHistory();
@@ -260,7 +256,7 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                                 <div className="p-4 text-center text-[10px] text-slate-400">
                                     {loadingHistory ? "Loading..." : "No transactions found."}
                                     <br/>
-                                    <span className="text-[8px] opacity-70">(Check Supabase RLS policies if list is empty)</span>
+                                    <span className="text-[8px] opacity-70">(History appears after bot execution)</span>
                                 </div>
                             )}
                         </div>
@@ -294,7 +290,6 @@ export default function App() {
   const [activeJob, setActiveJob] = useState(null); 
   const [isMounted, setIsMounted] = useState(false); 
   
-  // Strategy State
   const [amount, setAmount] = useState<number | ''>(100);
   const [freqIndex, setFreqIndex] = useState(0); 
   const [duration, setDuration] = useState(12); 
@@ -354,6 +349,7 @@ export default function App() {
   const fetchActiveJob = async (userAddr = account) => {
     try {
       const normalizedAddr = userAddr.toLowerCase();
+      // 读取依然走 RLS (Public Select)
       const { data, error } = await supabase
         .from('dca_jobs')
         .select('*')
@@ -418,6 +414,7 @@ export default function App() {
       return null;
   };
 
+  // --- 安全核心修改：调用 API 而不是直接操作数据库 ---
   const handleStartDCA = async () => {
     setIsLoading(true);
     let currentAccount = account;
@@ -444,6 +441,7 @@ export default function App() {
         const signer = await provider.getSigner();
         const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, signer);
         
+        // 1. 检查 Allowance
         const requiredAmount = ethers.parseUnits(amount.toString(), 6);
         const allowance = await usdcContract.allowance(normalizedAccount, DCA_CONTRACT_ADDRESS);
         
@@ -454,44 +452,50 @@ export default function App() {
             await approveTx.wait();
         }
 
+        // 2. 签名消息
         const message = `Confirm DCA Plan Creation:
 -------------------------
 Token: USDC -> cbBTC
 Amount: $${amount}
 Frequency: ${FREQUENCIES[freqIndex].label}
 -------------------------
-Your first trade will happen immediately via our bot.`;
+This signature verifies your ownership of the wallet.`;
 
-        await signer.signMessage(message);
+        const signature = await signer.signMessage(message);
 
-        const { error: userError } = await supabase
-            .from('users')
-            .upsert({ wallet_address: normalizedAccount }, { onConflict: 'wallet_address' });
-        if (userError) console.error("Supabase User Error:", userError);
-
+        // 3. 调用安全后端 API 创建任务
         const selectedFreq = FREQUENCIES[freqIndex];
         const frequencyInSeconds = selectedFreq.days * 24 * 60 * 60; 
 
-        const { data: insertedJob, error: jobError } = await supabase
-            .from('dca_jobs')
-            .insert([{
-                user_address: normalizedAccount,
-                token_in: USDC_ADDRESS,
-                token_out: CBBTC_ADDRESS,
-                amount_per_trade: Number(amount),
-                frequency_seconds: frequencyInSeconds,
-                status: 'ACTIVE',
-                next_run_time: new Date().toISOString() 
-            }])
-            .select()
-            .single();
+        const planData = {
+            token_in: USDC_ADDRESS,
+            token_out: CBBTC_ADDRESS,
+            amount_per_trade: Number(amount),
+            frequency_seconds: frequencyInSeconds,
+            next_run_time: new Date().toISOString()
+        };
 
-        if (jobError) throw jobError;
+        const response = await fetch('/api/create-plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message,
+                signature,
+                userAddress: normalizedAccount,
+                planData
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to create plan');
+        }
 
         alert(`🎉 Success! Plan Created.\n\nThe bot will execute your first buy of $${amount} shortly.`);
         
-        if (insertedJob) { 
-            setActiveJob(insertedJob);
+        if (result.data) { 
+            setActiveJob(result.data);
             setRefreshTrigger(prev => prev + 1); 
         } else { 
             await handleRefresh(normalizedAccount); 
@@ -509,19 +513,49 @@ Your first trade will happen immediately via our bot.`;
     }
   };
 
+  // --- 安全核心修改：调用 API 取消计划 ---
   const handleCancelPlan = async (jobId: any) => {
     const confirmCancel = window.confirm("Are you sure you want to stop this plan?");
     if (!confirmCancel) return;
     setIsLoading(true);
+    
     try {
-      const { error } = await supabase
-        .from('dca_jobs')
-        .update({ status: 'CANCELLED' })
-        .eq('id', jobId);
-      if (error) throw error;
+      if (!window.ethereum) throw new Error("No wallet found");
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+
+      // 1. 签名确认取消
+      const message = `Authorize Cancellation:
+-------------------------
+Cancel DCA Plan ID: ${jobId}
+-------------------------
+This signature proves you own this plan.`;
+
+      const signature = await signer.signMessage(message);
+
+      // 2. 调用安全后端 API
+      const response = await fetch('/api/cancel-plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+              message,
+              signature,
+              userAddress: account.toLowerCase(),
+              jobId
+          })
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to cancel');
+
       setActiveJob(null);
       handleRefresh(account); 
-    } catch (error) { alert("Failed to cancel plan"); } 
+
+    } catch (error: any) { 
+        if (error.code !== "ACTION_REJECTED") {
+            alert("Failed to cancel plan: " + error.message);
+        }
+    } 
     finally { setIsLoading(false); }
   };
 
@@ -593,27 +627,29 @@ Your first trade will happen immediately via our bot.`;
               </div>
               
               <div className="flex-1 w-full min-h-0 pt-2 pb-2">
-                {isMounted ? (
-                    <ResponsiveContainer width="100%" height="100%" minHeight={200}>
-                        <AreaChart data={calculation.data} margin={{ top: 5, right: 35, left: 20, bottom: 5 }}>
-                        <defs>
-                            <linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#2563EB" stopOpacity={0.25}/>
-                            <stop offset="95%" stopColor="#2563EB" stopOpacity={0}/>
-                            </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                        <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" minTickGap={30} />
-                        <YAxis hide={false} axisLine={false} tickLine={false} width={35} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(0)}k` : val} />
-                        <Tooltip contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px', fontSize: '11px', color: 'white', padding: '8px' }} itemStyle={{ padding: 0 }} formatter={(val: any) => [`${Number(val).toFixed(4)}`, 'cbBTC']} labelFormatter={(label) => `Date: ${label}`} labelStyle={{ color: '#94a3b8', marginBottom: '4px' }} />
-                        <Area type="monotone" dataKey="coins" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCoins)" animationDuration={1000} />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-300 text-xs">
-                        Loading Chart...
-                    </div>
-                )}
+                <div className="w-full h-64 pt-2 pb-2"> 
+                    {isMounted ? (
+                        <ResponsiveContainer width="100%" height="100%" minHeight={200}>
+                            <AreaChart data={calculation.data} margin={{ top: 5, right: 35, left: 20, bottom: 5 }}>
+                            <defs>
+                                <linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#2563EB" stopOpacity={0.25}/>
+                                <stop offset="95%" stopColor="#2563EB" stopOpacity={0}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                            <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" minTickGap={30} />
+                            <YAxis hide={false} axisLine={false} tickLine={false} width={35} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(0)}k` : val} />
+                            <Tooltip contentStyle={{ backgroundColor: '#1E293B', border: 'none', borderRadius: '8px', fontSize: '11px', color: 'white', padding: '8px' }} itemStyle={{ padding: 0 }} formatter={(val: any) => [`${Number(val).toFixed(4)}`, 'cbBTC']} labelFormatter={(label) => `Date: ${label}`} labelStyle={{ color: '#94a3b8', marginBottom: '4px' }} />
+                            <Area type="monotone" dataKey="coins" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCoins)" animationDuration={1000} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-300 text-xs">
+                            Loading Chart...
+                        </div>
+                    )}
+                </div>
               </div>
             </div>
 
