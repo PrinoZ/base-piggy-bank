@@ -59,19 +59,17 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
     const [history, setHistory] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
     
-    // ✅ NEW: State for real statistics based on DB
+    // ✅ State for real statistics based on DB
     const [realStats, setRealStats] = useState({ btc: 0, usd: 0, endDate: 'N/A' });
 
-    // 1. Fetch Real Statistics (Sum of successful transactions)
+    // 1. Fetch Real Statistics
     const fetchRealStats = async () => {
         if (isTemplate || !job?.id) return;
 
-        // Calculate theoretical end date based on creation time (defaulting to 12 months for display)
         const startTime = new Date(job.created_at);
         const endDateObj = new Date(startTime);
         endDateObj.setMonth(endDateObj.getMonth() + 12); 
 
-        // Query DB for SUCCESSFUL transactions only
         const { data, error } = await supabase
             .from('dca_transactions')
             .select('amount_usdc')
@@ -79,9 +77,7 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
             .eq('status', 'SUCCESS');
 
         if (!error && data) {
-            // Sum up all successful USDC amounts
             const totalUsd = data.reduce((acc, curr) => acc + (Number(curr.amount_usdc) || 0), 0);
-            // Estimate accumulated cbBTC based on current price
             const estimatedBtc = totalUsd / CURRENT_ASSET_PRICE;
 
             setRealStats({
@@ -110,12 +106,11 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
         setLoadingHistory(false);
     };
 
-    // ✅ Update stats and history on load or refresh
     useEffect(() => {
-        fetchRealStats(); // Always load stats
+        fetchRealStats(); 
         if (isExpanded || refreshTrigger > 0) {
             fetchHistory();
-            fetchRealStats(); // Reload stats if triggered
+            fetchRealStats(); 
         }
     }, [isExpanded, refreshTrigger, job?.id]);
 
@@ -207,7 +202,6 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                     <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
                             <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Total Accumulated</p>
-                            {/* ✅ Updated to use realStats */}
                             <div className="text-sm font-black text-slate-900">{realStats.btc.toFixed(6)} <span className="text-[10px] text-slate-400 font-bold">cbBTC</span></div>
                             <div className="text-[10px] font-bold text-green-600">Invested: ${realStats.usd.toFixed(2)}</div>
                         </div>
@@ -322,6 +316,7 @@ export default function App() {
     init();
   }, []);
 
+  // ✅ 核心修改：模拟真实市场价格波动 (Simulated Volatility)
   const calculation = useMemo(() => {
     const safeAmount = amount === '' ? 0 : amount;
     const safeGoal = targetGoal === '' ? 1 : targetGoal; 
@@ -331,20 +326,40 @@ export default function App() {
     const totalInvested = monthlyAmount * duration;
     
     let accumulatedCoins = 0;
-    const currentPrice = CURRENT_ASSET_PRICE;
+    const basePrice = CURRENT_ASSET_PRICE;
     
     const data = [];
+    
     for (let i = 0; i <= duration; i++) {
-        if (i > 0) accumulatedCoins += monthlyAmount / currentPrice;
+        // --- 价格模拟算法 ---
+        // 1. 趋势 (Trend): 稍微向上 (i * 0.01)
+        // 2. 周期 (Cycle): 正弦波 (Math.sin) 模拟牛熊转换
+        // 3. 噪音 (Noise): 随机波动 (Math.random)
+        const cycle = Math.sin(i * 0.5) * 0.15; // 15% 的周期性波动
+        const noise = (Math.random() - 0.5) * 0.1; // 10% 的随机噪音
+        const trend = i * 0.01; // 1% 的月度增长趋势
+        
+        // 当月模拟价格
+        const simulatedPrice = basePrice * (1 + cycle + noise + trend);
+
+        if (i > 0) {
+             // DCA 核心：价格低时买更多，价格高时买更少
+             accumulatedCoins += monthlyAmount / simulatedPrice;
+        }
+        
         data.push({
             month: i,
             dateLabel: getFutureDateLabel(i),
             coins: accumulatedCoins,
-            value: accumulatedCoins * currentPrice,
+            // 图表 value 使用模拟后的市值，这样曲线会更真实地起伏
+            value: accumulatedCoins * simulatedPrice, 
         });
     }
 
-    const finalValue = accumulatedCoins * currentPrice;
+    // 最终显示的 Value 用最后一月的模拟价格计算
+    const finalPrice = basePrice * (1 + Math.sin(duration * 0.5) * 0.15 + (Math.random() - 0.5) * 0.1 + duration * 0.01);
+    const finalValue = accumulatedCoins * finalPrice;
+    
     return { data, totalInvested, finalValue, totalCoins: accumulatedCoins, safeGoal };
   }, [amount, freqIndex, duration, targetGoal]);
 
