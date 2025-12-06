@@ -7,10 +7,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank, LayoutGrid, XCircle, RefreshCw, Plus, ChevronDown, ChevronUp, Share2, AlertTriangle, ExternalLink, Info } from 'lucide-react';
 
-// ==========================================
-//              CONSTANTS & TYPES
-// ==========================================
-
+// ... (CONSTANTS 和 ERC20_ABI 保持不变) ...
 const BASE_CHAIN_ID = '0x2105'; 
 const BASE_RPC_URL = 'https://mainnet.base.org';
 const CURRENT_ASSET_PRICE = 96000; 
@@ -38,10 +35,6 @@ const getFutureDateLabel = (monthsToAdd: number) => {
   return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 };
 
-// ==========================================
-//              COMPONENTS
-// ==========================================
-
 const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
   <div className="w-full">
     <div className="flex justify-between items-center mb-1">
@@ -59,21 +52,30 @@ const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
   </div>
 );
 
-// === PlanCard 组件 ===
-const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }: any) => {
+// === 核心修改：PlanCard 接收 refreshTrigger ===
+const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, refreshTrigger }: any) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [history, setHistory] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
 
+    // 1. 计算累计数据 (改为依赖 history 真实数据更佳，但目前保持估算逻辑或从 history 累加)
     const calculateStats = () => {
         if (isTemplate || !job) return { btc: 0, usd: 0, endDate: 'N/A', roi: 0 };
         
+        // 如果有历史记录，优先使用历史记录计算真实投入
+        let totalInvested = 0;
+        if (history.length > 0) {
+             // 这里只是简单演示，实际上应该在下面 fetch 完 history 后再算
+             // 为了 UI 响应快，先用估算值，或者你可以遍历 history 累加 amount_usdc
+        }
+
+        // 保持原有的估算逻辑作为兜底
         const startTime = new Date(job.created_at).getTime();
         const now = new Date().getTime();
         const freqMs = (job.frequency_seconds || 86400) * 1000;
         const executions = Math.max(1, Math.floor((now - startTime) / freqMs) + 1);
         
-        const totalInvested = executions * (job.amount_per_trade || 0);
+        totalInvested = executions * (job.amount_per_trade || 0);
         const estimatedBTC = totalInvested / CURRENT_ASSET_PRICE;
         
         const currentVal = estimatedBTC * CURRENT_ASSET_PRICE * 1.05; 
@@ -87,47 +89,42 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
 
     const stats = calculateStats();
 
+    // 2. 加载交易历史 (加入 refreshTrigger 依赖)
     useEffect(() => {
-        if (isExpanded && !isTemplate && job?.id) {
+        if (isTemplate || !job?.id) return;
+
+        // 只要展开了，或者触发了刷新，就去查
+        if (isExpanded || refreshTrigger > 0) {
             setLoadingHistory(true);
             supabase
                 .from('dca_transactions')
                 .select('*')
                 .eq('job_id', job.id)
                 .order('created_at', { ascending: false })
-                .limit(5)
-                .then(({ data }) => {
+                .limit(10) // 显示最近10条
+                .then(({ data, error }) => {
+                    if (error) console.error("History fetch error:", error);
                     setHistory(data || []);
                     setLoadingHistory(false);
                 });
         }
-    }, [isExpanded, job, isTemplate]);
+    }, [isExpanded, job, isTemplate, refreshTrigger]); // <--- 关键：监听 refreshTrigger
 
     const isLowBalance = !isTemplate && usdcBalance !== null && Number(usdcBalance) < Number(job?.amount_per_trade);
 
     const handleShare = async (e: any) => {
         e.stopPropagation(); 
-        
         const text = `I'm auto-investing cbBTC via @BasePiggyBank! 🐷\n\nAccumulated: ${stats.btc.toFixed(4)} BTC\nInvested: $${stats.usd}\n\nStart your journey on Base! 🚀`;
         const url = window.location.href;
-
         try {
             if (navigator.share) {
-                await navigator.share({
-                    title: 'Base Piggy Bank',
-                    text: text,
-                    url: url
-                });
-            } else {
-                throw new Error("Share API not supported");
-            }
+                await navigator.share({ title: 'Base Piggy Bank', text: text, url: url });
+            } else { throw new Error("Share API not supported"); }
         } catch (error) {
             try {
                 await navigator.clipboard.writeText(`${text}\n${url}`);
-                alert("📋 Results copied to clipboard! You can paste it to Twitter/Farcaster.");
-            } catch (clipboardError) {
-                alert("Failed to copy results.");
-            }
+                alert("📋 Results copied to clipboard!");
+            } catch (c) { alert("Failed to copy."); }
         }
     };
 
@@ -219,16 +216,22 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
                     </button>
 
                     <div className="mb-4">
-                        <p className="text-[10px] text-slate-500 font-bold uppercase mb-2">Recent Transactions</p>
-                        <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden">
-                            {loadingHistory ? (
-                                <div className="p-4 text-center text-[10px] text-slate-400">Loading history...</div>
-                            ) : history.length > 0 ? (
+                        <div className="flex justify-between items-center mb-2">
+                            <p className="text-[10px] text-slate-500 font-bold uppercase">Recent Transactions</p>
+                            {/* 这里的刷新状态提示 */}
+                            {loadingHistory && <span className="text-[9px] text-blue-500 animate-pulse">Updating...</span>}
+                        </div>
+                        
+                        <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden max-h-40 overflow-y-auto">
+                            {history.length > 0 ? (
                                 history.map((tx: any) => (
                                     <div key={tx.id} className="flex justify-between items-center p-3 border-b border-slate-100 last:border-0 hover:bg-slate-100/50">
                                         <div className="flex items-center gap-2">
                                             <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                                            <span className="text-[10px] font-bold text-slate-700">Success</span>
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] font-bold text-slate-700">Success</span>
+                                                <span className="text-[8px] text-slate-400">{new Date(tx.created_at).toLocaleDateString()}</span>
+                                            </div>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <span className="text-[10px] font-mono text-slate-500">${tx.amount_usdc}</span>
@@ -237,7 +240,7 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
                                                 target="_blank" 
                                                 rel="noreferrer"
                                                 onClick={(e) => e.stopPropagation()}
-                                                className="text-blue-600 hover:text-blue-700"
+                                                className="text-blue-600 hover:text-blue-700 bg-blue-50 p-1 rounded"
                                             >
                                                 <ExternalLink size={10} />
                                             </a>
@@ -245,7 +248,11 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance }:
                                     </div>
                                 ))
                             ) : (
-                                <div className="p-4 text-center text-[10px] text-slate-400">No transactions yet.</div>
+                                <div className="p-4 text-center text-[10px] text-slate-400">
+                                    {loadingHistory ? "Loading..." : "No transactions yet."}
+                                    <br/>
+                                    <span className="text-[8px] opacity-70">(History appears after bot execution)</span>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -273,6 +280,8 @@ export default function App() {
   const [account, setAccount] = useState(''); 
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null); 
   const [isLoading, setIsLoading] = useState(false); 
+  const [isRefreshing, setIsRefreshing] = useState(false); // 刷新按钮动画状态
+  const [refreshTrigger, setRefreshTrigger] = useState(0); // 核心：刷新扳机
   const [activeJob, setActiveJob] = useState(null); 
   
   // Strategy State
@@ -285,8 +294,7 @@ export default function App() {
     const init = async () => {
         const acc = await connectWallet(true); 
         if (acc) {
-            fetchActiveJob(acc);
-            fetchUsdcBalance(acc); 
+            handleRefresh(acc); // 初始化加载
         }
     };
     init();
@@ -320,8 +328,23 @@ export default function App() {
 
   // --- Functions ---
 
+  // 统一的刷新入口
+  const handleRefresh = async (userAddr = account) => {
+      if (!userAddr) return;
+      setIsRefreshing(true);
+      
+      // 1. 刷新 Job 状态
+      await fetchActiveJob(userAddr);
+      // 2. 刷新余额
+      await fetchUsdcBalance(userAddr);
+      // 3. 触发子组件 History 刷新 (通过增加计数器)
+      setRefreshTrigger(prev => prev + 1);
+      
+      // 延迟一点停止动画，让用户有感知
+      setTimeout(() => setIsRefreshing(false), 800);
+  };
+
   const fetchActiveJob = async (userAddr = account) => {
-    if (!userAddr) return;
     try {
       const normalizedAddr = userAddr.toLowerCase();
       const { data, error } = await supabase
@@ -344,9 +367,7 @@ export default function App() {
           const balance = await usdcContract.balanceOf(userAddr);
           const formatted = ethers.formatUnits(balance, 6);
           setUsdcBalance(formatted);
-      } catch (err) {
-          console.error("Failed to fetch balance", err);
-      }
+      } catch (err) { console.error("Failed to fetch balance", err); }
   };
 
   const switchToBase = async () => {
@@ -395,7 +416,6 @@ export default function App() {
     let currentAccount = account;
 
     try {
-        // === 验证 1: 金额必须大于 0 ===
         if (!amount || Number(amount) <= 0) {
             alert("Please enter a valid Amount per Trade greater than 0.");
             setIsLoading(false);
@@ -463,8 +483,13 @@ Your first trade will happen immediately via our bot.`;
 
         alert(`🎉 Success! Plan Created.\n\nThe bot will execute your first buy of $${amount} shortly.`);
         
-        if (insertedJob) { setActiveJob(insertedJob); } 
-        else { await fetchActiveJob(normalizedAccount); }
+        // 创建成功后，自动触发刷新
+        if (insertedJob) { 
+            setActiveJob(insertedJob);
+            setRefreshTrigger(prev => prev + 1); // 触发历史刷新（虽然此时还没历史）
+        } else { 
+            await handleRefresh(normalizedAccount); 
+        }
         
         setActiveTab('assets'); 
 
@@ -489,7 +514,7 @@ Your first trade will happen immediately via our bot.`;
         .eq('id', jobId);
       if (error) throw error;
       setActiveJob(null);
-      fetchActiveJob(account); 
+      handleRefresh(account); 
     } catch (error) { alert("Failed to cancel plan"); } 
     finally { setIsLoading(false); }
   };
@@ -529,7 +554,6 @@ Your first trade will happen immediately via our bot.`;
         {/* TAB 1: STRATEGY */}
         {activeTab === 'strategy' && (
           <div className="flex flex-col h-full">
-            {/* 上半部分：图表区 */}
             <div className="flex-1 bg-slate-50 border-b border-slate-200 flex flex-col relative min-h-0">
               <div className="px-5 pt-4 pb-2 flex-none">
                 <div className="w-full">
@@ -581,9 +605,8 @@ Your first trade will happen immediately via our bot.`;
               </div>
             </div>
 
-            {/* 下半部分：控制区 (位置互换) */}
             <div className="flex-none p-5 bg-white space-y-3">
-              {/* 1. Target Goal */}
+              {/* Target Goal */}
               <div>
                 <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
                   <span>Target Goal</span>
@@ -608,7 +631,7 @@ Your first trade will happen immediately via our bot.`;
                 </div>
               </div>
 
-              {/* 2. Amount per Trade (增加输入限制) */}
+              {/* Amount per Trade */}
               <div>
                 <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
                   <span>Amount per Trade</span>
@@ -626,7 +649,7 @@ Your first trade will happen immediately via our bot.`;
                         const val = e.target.value;
                         if (val === '') { setAmount(''); return; }
                         const num = Number(val);
-                        if (num < 0) return; // 拦截负数
+                        if (num < 0) return; 
                         setAmount(num);
                     }} 
                     className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-7 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" 
@@ -634,7 +657,7 @@ Your first trade will happen immediately via our bot.`;
                 </div>
               </div>
 
-              {/* 3. Frequency */}
+              {/* Frequency */}
               <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Frequency</label>
                   <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-lg">
@@ -665,12 +688,21 @@ Your first trade will happen immediately via our bot.`;
             <div className="flex flex-col h-full bg-slate-50 p-4 overflow-y-auto relative">
                 <div className="flex justify-between items-center mb-4 px-1">
                     <h2 className="text-lg font-black text-slate-900">My Active Plans</h2>
-                    <button onClick={() => fetchActiveJob(account)} className="p-2 bg-white rounded-full text-slate-500 shadow-sm hover:text-blue-600 transition-all">
+                    <button 
+                        onClick={() => handleRefresh(account)}
+                        className={`p-2 bg-white rounded-full text-slate-500 shadow-sm hover:text-blue-600 transition-all ${isRefreshing ? 'animate-spin' : ''}`}
+                    >
                         <RefreshCw size={16} />
                     </button>
                 </div>
                 {activeJob ? (
-                    <PlanCard job={activeJob} onCancel={handleCancelPlan} isLoading={isLoading} usdcBalance={usdcBalance} />
+                    <PlanCard 
+                        job={activeJob} 
+                        onCancel={handleCancelPlan} 
+                        isLoading={isLoading} 
+                        usdcBalance={usdcBalance} 
+                        refreshTrigger={refreshTrigger} // <--- 关键传递
+                    />
                 ) : (
                     <div className="relative">
                         <PlanCard isTemplate={true} />
