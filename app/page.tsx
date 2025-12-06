@@ -58,32 +58,41 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
     const [isExpanded, setIsExpanded] = useState(false);
     const [history, setHistory] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
+    
+    // ✅ NEW: State for real statistics based on DB
+    const [realStats, setRealStats] = useState({ btc: 0, usd: 0, endDate: 'N/A' });
 
-    // 计算统计数据
-    const calculateStats = () => {
-        if (isTemplate || !job) return { btc: 0, usd: 0, endDate: 'N/A', roi: 0 };
-        
-        let totalInvested = 0;
-        const startTime = new Date(job.created_at).getTime();
-        const now = new Date().getTime();
-        const freqMs = (job.frequency_seconds || 86400) * 1000;
-        const executions = Math.max(1, Math.floor((now - startTime) / freqMs) + 1);
-        
-        totalInvested = executions * (job.amount_per_trade || 0);
-        const estimatedBTC = totalInvested / CURRENT_ASSET_PRICE;
-        
-        const currentVal = estimatedBTC * CURRENT_ASSET_PRICE * 1.05; 
-        const roi = ((currentVal - totalInvested) / totalInvested) * 100;
+    // 1. Fetch Real Statistics (Sum of successful transactions)
+    const fetchRealStats = async () => {
+        if (isTemplate || !job?.id) return;
 
+        // Calculate theoretical end date based on creation time (defaulting to 12 months for display)
+        const startTime = new Date(job.created_at);
         const endDateObj = new Date(startTime);
         endDateObj.setMonth(endDateObj.getMonth() + 12); 
 
-        return { btc: estimatedBTC, usd: totalInvested, endDate: endDateObj.toLocaleDateString(), roi: roi };
+        // Query DB for SUCCESSFUL transactions only
+        const { data, error } = await supabase
+            .from('dca_transactions')
+            .select('amount_usdc')
+            .eq('job_id', job.id)
+            .eq('status', 'SUCCESS');
+
+        if (!error && data) {
+            // Sum up all successful USDC amounts
+            const totalUsd = data.reduce((acc, curr) => acc + (Number(curr.amount_usdc) || 0), 0);
+            // Estimate accumulated cbBTC based on current price
+            const estimatedBtc = totalUsd / CURRENT_ASSET_PRICE;
+
+            setRealStats({
+                usd: totalUsd,
+                btc: estimatedBtc,
+                endDate: endDateObj.toLocaleDateString()
+            });
+        }
     };
 
-    const stats = calculateStats();
-
-    // 独立的数据获取函数
+    // 2. Fetch Transaction History List
     const fetchHistory = async () => {
         if (isTemplate || !job?.id) return;
         setLoadingHistory(true);
@@ -101,9 +110,12 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
         setLoadingHistory(false);
     };
 
+    // ✅ Update stats and history on load or refresh
     useEffect(() => {
+        fetchRealStats(); // Always load stats
         if (isExpanded || refreshTrigger > 0) {
             fetchHistory();
+            fetchRealStats(); // Reload stats if triggered
         }
     }, [isExpanded, refreshTrigger, job?.id]);
 
@@ -111,7 +123,7 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
 
     const handleShare = async (e: any) => {
         e.stopPropagation(); 
-        const text = `I'm auto-investing cbBTC via @BasePiggyBank! 🐷\n\nAccumulated: ${stats.btc.toFixed(4)} BTC\nInvested: $${stats.usd}\n\nStart your journey on Base! 🚀`;
+        const text = `I'm auto-investing cbBTC via @BasePiggyBank! 🐷\n\nAccumulated: ${realStats.btc.toFixed(4)} BTC\nInvested: $${realStats.usd}\n\nStart your journey on Base! 🚀`;
         const url = window.location.href;
         try {
             if (navigator.share) {
@@ -195,12 +207,13 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                     <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
                             <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Total Accumulated</p>
-                            <div className="text-sm font-black text-slate-900">{stats.btc.toFixed(6)} <span className="text-[10px] text-slate-400 font-bold">cbBTC</span></div>
-                            <div className="text-[10px] font-bold text-green-600">Invested: ${stats.usd.toFixed(2)}</div>
+                            {/* ✅ Updated to use realStats */}
+                            <div className="text-sm font-black text-slate-900">{realStats.btc.toFixed(6)} <span className="text-[10px] text-slate-400 font-bold">cbBTC</span></div>
+                            <div className="text-[10px] font-bold text-green-600">Invested: ${realStats.usd.toFixed(2)}</div>
                         </div>
                         <div>
                             <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Plan Ends On</p>
-                            <div className="text-sm font-bold text-slate-700">{stats.endDate}</div> 
+                            <div className="text-sm font-bold text-slate-700">{realStats.endDate}</div> 
                         </div>
                     </div>
 
@@ -216,7 +229,6 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                         <div className="flex justify-between items-center mb-2">
                             <div className="flex items-center gap-2">
                                 <p className="text-[10px] text-slate-500 font-bold uppercase">Recent Transactions</p>
-                                {/* ✅ 已移除右侧的刷新按钮 (RefreshCw) */}
                             </div>
                             {loadingHistory && <span className="text-[9px] text-blue-500 animate-pulse">Updating...</span>}
                         </div>
@@ -224,7 +236,6 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                         <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden max-h-40 overflow-y-auto">
                             {history.length > 0 ? (
                                 history.map((tx: any) => {
-                                    // ✅ 动态判断状态颜色
                                     const isSuccess = tx.status === 'SUCCESS';
                                     const statusColor = isSuccess ? 'bg-green-500' : 'bg-red-500';
                                     const statusText = isSuccess ? 'text-slate-700' : 'text-red-600';
@@ -232,16 +243,13 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                                     return (
                                         <div key={tx.id} className="flex justify-between items-center p-3 border-b border-slate-100 last:border-0 hover:bg-slate-100/50">
                                             <div className="flex items-center gap-2">
-                                                {/* ✅ 状态点颜色动态化 */}
                                                 <div className={`w-1.5 h-1.5 rounded-full ${statusColor}`}></div>
                                                 <div className="flex flex-col">
-                                                    {/* ✅ 状态文字动态化 (显示真实状态) */}
                                                     <span className={`text-[10px] font-bold ${statusText}`}>{tx.status}</span>
                                                     <span className="text-[8px] text-slate-400">{new Date(tx.created_at).toLocaleDateString()}</span>
                                                 </div>
                                             </div>
                                             
-                                            {/* ✅ 扩大点击范围：包含金额和图标 */}
                                             <a 
                                                 href={`https://basescan.org/tx/${tx.tx_hash}`} 
                                                 target="_blank" 
@@ -498,7 +506,8 @@ This signature verifies your ownership of the wallet.`;
             throw new Error(result.error || 'Failed to create plan');
         }
 
-        alert(`🎉 Success! Plan Created.\n\nThe bot will execute your first buy of $${amount} shortly.`);
+        // ✅ Updated Alert Message
+        alert(`🎉 Plan Created Successfully!\n\n⏳ The bot will execute your first buy of $${amount} within 1 minute.\n\nPlease utilize the refresh button on the plan card to see your new transaction.`);
         
         if (result.data) {
              setActiveJobs(prev => [result.data, ...prev]);

@@ -40,17 +40,18 @@ Deno.serve(async (req) => {
     const wallet = new ethers.Wallet(PRIVATE_KEY, provider)
     const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, wallet)
 
+    // 强制 Gas Limit，跳过预估检查
     const txOptions = {
         maxPriorityFeePerGas: ethers.parseUnits('0.01', 'gwei'),
         maxFeePerGas: ethers.parseUnits('0.1', 'gwei'),
-        gasLimit: 300000 
+        gasLimit: 500000 // 稍微给多一点，防止OutOfGas
     };
 
     const results = []
 
     for (const job of jobs) {
       let txHash = null;
-      let status = 'SUCCESS'; // 默认成功
+      let status = 'SUCCESS'; // 默认先设为成功
       let errorMessage = null;
 
       try {
@@ -69,7 +70,7 @@ Deno.serve(async (req) => {
           factory: AERODROME_FACTORY
         }]
 
-        // === 发送交易 ===
+        // === 1. 发送交易 ===
         const tx = await contract.executeDCA(
           cleanUserAddr, 
           amountIn, 
@@ -82,19 +83,32 @@ Deno.serve(async (req) => {
         console.log(`Tx sent: ${tx.hash}`)
         txHash = tx.hash;
 
-        // 【可选】如果你想等待链上确认（会增加运行时间，但能捕捉链上失败）
-        // await tx.wait(); 
+        // === 2. 关键修改：等待链上确认 ===
+        // Base 链很快，通常 2-3 秒就能确认
+        console.log("Waiting for receipt...");
+        const receipt = await tx.wait();
+
+        // === 3. 检查链上真实状态 ===
+        // status: 1 代表成功，0 代表失败(Revert)
+        if (receipt.status === 0) {
+            throw new Error("Transaction Reverted on-chain (execution failed)");
+        }
+        console.log("Tx confirmed success!");
 
       } catch (err: any) {
         console.error(`Job ${job.id} failed:`, err)
-        // 🛑 核心修改：一旦报错，立即标记为失败
+        
+        // 🛑 一旦报错（包括链上Revert），标记为失败
         status = 'FAILED'; 
-        // 生成一个包含 Error 的假 Hash，或者保留 null
-        txHash = "0xError" + Math.random().toString(16).substr(2, 8); 
+        
+        // 如果没有生成 Hash (比如发之前就挂了)，生成一个错误标记
+        if (!txHash) {
+             txHash = "0xError" + Math.random().toString(16).substr(2, 8); 
+        }
         errorMessage = String(err.message || err).slice(0, 100);
       }
 
-      // === 写入数据库 (无论是成功还是失败) ===
+      // === 写入数据库 ===
       const { error: logError } = await supabase
         .from('dca_transactions')
         .insert({
@@ -102,13 +116,13 @@ Deno.serve(async (req) => {
             user_address: job.user_address, 
             amount_usdc: job.amount_per_trade,
             tx_hash: txHash,
-            status: status, // <--- 关键：这里会写入 'FAILED'
+            status: status, // 这里现在能正确记录 'FAILED' 了
             created_at: new Date().toISOString()
         });
           
       if (logError) console.error("Failed to log transaction:", logError);
 
-      // 更新下次运行时间 (即使失败也更新，防止卡死)
+      // 更新下次运行时间
       const nextRun = new Date(new Date().getTime() + job.frequency_seconds * 1000)
       
       await supabase
