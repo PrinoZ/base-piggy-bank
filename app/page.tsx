@@ -73,8 +73,10 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
     const [history, setHistory] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
     
+    // State for real statistics based on DB
     const [realStats, setRealStats] = useState({ btc: 0, usd: 0, endDate: 'N/A' });
 
+    // 1. Fetch Real Statistics (Sum of successful transactions)
     const fetchRealStats = async () => {
         if (isTemplate || !job?.id) return;
 
@@ -100,6 +102,7 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
         }
     };
 
+    // 2. Fetch Transaction History List
     const fetchHistory = async () => {
         if (isTemplate || !job?.id) return;
         setLoadingHistory(true);
@@ -309,7 +312,7 @@ export default function App() {
   const [activeJobs, setActiveJobs] = useState<any[]>([]); 
   const [isMounted, setIsMounted] = useState(false); 
   
-  // ✅ NEW: 排行榜状态
+  // 排行榜状态
   const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
   const [userRankData, setUserRankData] = useState<any>(null);
 
@@ -332,7 +335,7 @@ export default function App() {
     init();
   }, []);
 
-  // ✅ 监听 Tab 切换，如果切到 rank，就刷新排行榜
+  // 监听 Tab 切换，如果切到 rank，就刷新排行榜
   useEffect(() => {
       if (activeTab === 'leaderboard') {
           fetchLeaderboard();
@@ -388,10 +391,9 @@ export default function App() {
       setTimeout(() => setIsRefreshing(false), 800);
   };
 
-  // ✅ 获取排行榜真实数据
+  // 获取排行榜真实数据
   const fetchLeaderboard = async () => {
       try {
-          // 查询视图，按投资额倒序，取前 50 名
           const { data, error } = await supabase
               .from('leaderboard')
               .select('*')
@@ -401,9 +403,8 @@ export default function App() {
           if (error) throw error;
 
           if (data) {
-              setLeaderboardData(data); // 存入列表数据
+              setLeaderboardData(data); 
 
-              // 计算当前用户的排名信息
               if (account) {
                   const myIndex = data.findIndex(u => u.user_address.toLowerCase() === account.toLowerCase());
                   if (myIndex !== -1) {
@@ -412,7 +413,6 @@ export default function App() {
                           amount: data[myIndex].total_invested
                       });
                   } else {
-                      // 如果前50名里没我，显示 >50
                       setUserRankData({ rank: '>50', amount: 0 });
                   }
               }
@@ -855,7 +855,6 @@ This signature proves you own this plan.`;
                 <div className="flex justify-between items-start">
                   <div>
                       <p className="text-blue-100 text-xs font-bold uppercase mb-1">Your Rank</p>
-                      {/* ✅ 动态显示用户排名数据 */}
                       <h2 className="text-4xl font-black">{userRankData ? `#${userRankData.rank}` : '-'}</h2>
                       <p className="text-sm font-semibold mt-2 opacity-90 inline-block bg-white/20 px-2 py-0.5 rounded text-white">
                           {userRankData ? getTier(userRankData.amount) : 'Join to Rank'}
@@ -865,7 +864,6 @@ This signature proves you own this plan.`;
                 </div>
               </div>
               
-              {/* ✅ 渲染真实排行榜列表 */}
               <div className="space-y-2">
                 {leaderboardData.length > 0 ? (
                     leaderboardData.map((user: any, index: number) => (
@@ -880,7 +878,8 @@ This signature proves you own this plan.`;
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="font-bold text-slate-900 text-sm font-mono">${user.total_invested} <span className="text-[10px] text-slate-400">Inv</span></div>
+                          {/* ✅ 修改点：显示 USDC */}
+                          <div className="font-bold text-slate-900 text-sm font-mono">${user.total_invested} <span className="text-[10px] text-slate-400 font-sans">USDC</span></div>
                         </div>
                       </div>
                     ))
