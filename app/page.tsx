@@ -620,12 +620,25 @@ This signature proves you own this plan.`;
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Failed to cancel');
 
+      // === 修改部分开始 ===
+      
+      // 1. 仅执行本地状态更新（乐观更新），让卡片立即消失
       setActiveJobs(prev => prev.filter(job => job.id !== jobId));
-      handleRefresh(account); 
+      
+      // 2. 不要立即调用 handleRefresh(account)，或者加一个较长的延迟
+      // handleRefresh(account);  <-- 删除或注释掉这一行
+      
+      // 如果你非常想刷新余额，可以只刷新余额，而不刷新任务列表：
+      fetchUsdcBalance(account); 
+
+      // === 修改部分结束 ===
+
+      alert("Plan cancelled successfully."); // 可选：给个提示
 
     } catch (error: any) { 
+        console.error(error);
         if (error.code !== "ACTION_REJECTED") {
-            alert("Failed to cancel plan: " + error.message);
+            alert("Failed to cancel plan: " + (error.message || error));
         }
     } 
     finally { setIsLoading(false); }
