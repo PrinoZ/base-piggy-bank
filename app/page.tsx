@@ -590,6 +590,7 @@ This signature verifies your ownership of the wallet.`;
     }
   };
 
+  // --- 仅修改了消息格式的 handleCancelPlan ---
   const handleCancelPlan = async (jobId: any) => {
     setIsLoading(true);
     
@@ -598,19 +599,21 @@ This signature verifies your ownership of the wallet.`;
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
-      const message = `Authorize Cancellation:
--------------------------
-Cancel DCA Plan ID: ${jobId}
--------------------------
-This signature proves you own this plan.`;
+      // ============================================================
+      // 核心修改：使用绝对不会出错的单行纯文本
+      // 去掉所有换行符、多余空格和特殊符号
+      // ============================================================
+      const message = `Authorize Cancellation of Plan ID: ${jobId}`;
 
+      // 签名
       const signature = await signer.signMessage(message);
 
+      // 发送请求
       const response = await fetch('/api/cancel-plan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-              message,
+              message,       // 后端应该验证这个纯文本消息
               signature,
               userAddress: account.toLowerCase(),
               jobId
@@ -620,25 +623,19 @@ This signature proves you own this plan.`;
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Failed to cancel');
 
-      // === 修改部分开始 ===
+      // 本地乐观更新：从列表中移除
+      setActiveJobs(prev => prev.filter(job => String(job.id) !== String(jobId)));
       
-      // 1. 仅执行本地状态更新（乐观更新），让卡片立即消失
-      setActiveJobs(prev => prev.filter(job => job.id !== jobId));
-      
-      // 2. 不要立即调用 handleRefresh(account)，或者加一个较长的延迟
-      // handleRefresh(account);  <-- 删除或注释掉这一行
-      
-      // 如果你非常想刷新余额，可以只刷新余额，而不刷新任务列表：
+      // 刷新余额
       fetchUsdcBalance(account); 
 
-      // === 修改部分结束 ===
-
-      alert("Plan cancelled successfully."); // 可选：给个提示
+      // 成功提示
+      alert("Plan cancelled successfully.");
 
     } catch (error: any) { 
         console.error(error);
         if (error.code !== "ACTION_REJECTED") {
-            alert("Failed to cancel plan: " + (error.message || error));
+            alert("Failed to cancel plan: " + (error.message || "Unknown error"));
         }
     } 
     finally { setIsLoading(false); }
