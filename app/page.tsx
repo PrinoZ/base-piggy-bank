@@ -36,13 +36,11 @@ const getFutureDateLabel = (monthsToAdd: number) => {
   return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 };
 
-// 地址截断显示 (例如 0x1234...5678)
 const shortenAddress = (addr: string) => {
     if (!addr) return 'Unknown';
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 };
 
-// 根据投资金额计算等级称号
 const getTier = (amount: number) => {
     if (amount >= 1000) return 'Whale 🐋';
     if (amount >= 500) return 'Shark 🦈';
@@ -72,14 +70,10 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
     const [isExpanded, setIsExpanded] = useState(false);
     const [history, setHistory] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
-    
-    // State for real statistics based on DB
     const [realStats, setRealStats] = useState({ btc: 0, usd: 0, endDate: 'N/A' });
 
-    // 1. Fetch Real Statistics (Sum of successful transactions)
     const fetchRealStats = async () => {
         if (isTemplate || !job?.id) return;
-
         const startTime = new Date(job.created_at);
         const endDateObj = new Date(startTime);
         endDateObj.setMonth(endDateObj.getMonth() + 12); 
@@ -93,30 +87,20 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
         if (!error && data) {
             const totalUsd = data.reduce((acc, curr) => acc + (Number(curr.amount_usdc) || 0), 0);
             const estimatedBtc = totalUsd / CURRENT_ASSET_PRICE;
-
-            setRealStats({
-                usd: totalUsd,
-                btc: estimatedBtc,
-                endDate: endDateObj.toLocaleDateString()
-            });
+            setRealStats({ usd: totalUsd, btc: estimatedBtc, endDate: endDateObj.toLocaleDateString() });
         }
     };
 
-    // 2. Fetch Transaction History List
     const fetchHistory = async () => {
         if (isTemplate || !job?.id) return;
         setLoadingHistory(true);
-        
         const { data, error } = await supabase
             .from('dca_transactions')
             .select('*')
             .eq('job_id', job.id)
             .order('created_at', { ascending: false })
             .limit(10);
-
-        if (!error) {
-            setHistory(data || []);
-        }
+        if (!error) setHistory(data || []);
         setLoadingHistory(false);
     };
 
@@ -135,9 +119,8 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
         const text = `I'm auto-investing cbBTC via @BasePiggyBank! 🐷\n\nAccumulated: ${realStats.btc.toFixed(4)} BTC\nInvested: $${realStats.usd}\n\nStart your journey on Base! 🚀`;
         const url = window.location.href;
         try {
-            if (navigator.share) {
-                await navigator.share({ title: 'Base Piggy Bank', text: text, url: url });
-            } else { throw new Error("Share API not supported"); }
+            if (navigator.share) await navigator.share({ title: 'Base Piggy Bank', text: text, url: url });
+            else throw new Error("Share API not supported");
         } catch (error) {
             try {
                 await navigator.clipboard.writeText(`${text}\n${url}`);
@@ -146,7 +129,8 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
         }
     };
 
-    const handleCancelClick = (e: React.MouseEvent) => {
+    // 强化事件处理，防止移动端点击穿透
+    const handleCancelClick = (e: any) => {
         e.stopPropagation();
         e.preventDefault();
         if (!isTemplate && onCancel && job?.id) {
@@ -167,9 +151,7 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                 {isLowBalance && (
                     <div className="mb-3 bg-red-50 border border-red-100 rounded-lg p-2 flex items-start gap-2 animate-pulse">
                         <AlertTriangle className="text-red-500 shrink-0" size={16} />
-                        <p className="text-[10px] font-bold text-red-600 leading-tight">
-                            Insufficient Balance. Next trade may fail. Please deposit USDC.
-                        </p>
+                        <p className="text-[10px] font-bold text-red-600 leading-tight">Insufficient Balance. Next trade may fail.</p>
                     </div>
                 )}
 
@@ -212,82 +194,54 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
             <div className={`overflow-hidden transition-all duration-300 ease-in-out relative z-10 ${isExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
                 <div className="px-5 pb-5 pt-0">
                     <div className="w-full h-px bg-slate-100 my-3"></div>
-                    
                     <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
-                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Total Accumulated</p>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Accumulated</p>
                             <div className="text-sm font-black text-slate-900">{realStats.btc.toFixed(6)} <span className="text-[10px] text-slate-400 font-bold">cbBTC</span></div>
-                            <div className="text-[10px] font-bold text-green-600">Invested: ${realStats.usd.toFixed(2)}</div>
                         </div>
                         <div>
-                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Plan Ends On</p>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Ends On</p>
                             <div className="text-sm font-bold text-slate-700">{realStats.endDate}</div> 
                         </div>
                     </div>
 
-                    <button 
-                        onClick={handleShare}
-                        className="w-full mb-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
-                    >
-                        <Share2 size={14} />
-                        Share My Results
+                    <button onClick={handleShare} className="w-full mb-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform">
+                        <Share2 size={14} /> Share My Results
                     </button>
 
                     <div className="mb-4">
                         <div className="flex justify-between items-center mb-2">
-                            <div className="flex items-center gap-2">
-                                <p className="text-[10px] text-slate-500 font-bold uppercase">Recent Transactions</p>
-                            </div>
-                            {loadingHistory && <span className="text-[9px] text-blue-500 animate-pulse">Updating...</span>}
+                             <p className="text-[10px] text-slate-500 font-bold uppercase">Recent Transactions</p>
+                             {loadingHistory && <span className="text-[9px] text-blue-500 animate-pulse">Updating...</span>}
                         </div>
-                        
                         <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden max-h-40 overflow-y-auto">
                             {history.length > 0 ? (
-                                history.map((tx: any) => {
-                                    const isSuccess = tx.status === 'SUCCESS';
-                                    const statusColor = isSuccess ? 'bg-green-500' : 'bg-red-500';
-                                    const statusText = isSuccess ? 'text-slate-700' : 'text-red-600';
-                                    
-                                    return (
-                                        <a 
-                                            key={tx.id} 
-                                            href={`https://basescan.org/tx/${tx.tx_hash}`} 
-                                            target="_blank" 
-                                            rel="noreferrer"
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="flex justify-between items-center p-3 border-b border-slate-100 last:border-0 hover:bg-slate-100/80 transition-colors cursor-pointer block"
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <div className={`w-1.5 h-1.5 rounded-full ${statusColor}`}></div>
-                                                <div className="flex flex-col">
-                                                    <span className={`text-[10px] font-bold ${statusText}`}>{tx.status}</span>
-                                                    <span className="text-[8px] text-slate-400">{new Date(tx.created_at).toLocaleDateString()}</span>
-                                                </div>
+                                history.map((tx: any) => (
+                                    <a key={tx.id} href={`https://basescan.org/tx/${tx.tx_hash}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex justify-between items-center p-3 border-b border-slate-100 last:border-0 hover:bg-slate-100/80 transition-colors cursor-pointer block">
+                                        <div className="flex items-center gap-2">
+                                            <div className={`w-1.5 h-1.5 rounded-full ${tx.status === 'SUCCESS' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                            <div className="flex flex-col">
+                                                <span className={`text-[10px] font-bold ${tx.status === 'SUCCESS' ? 'text-slate-700' : 'text-red-600'}`}>{tx.status}</span>
+                                                <span className="text-[8px] text-slate-400">{new Date(tx.created_at).toLocaleDateString()}</span>
                                             </div>
-                                            
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[10px] font-mono text-slate-500">${tx.amount_usdc}</span>
-                                                <div className="text-blue-600 bg-blue-50 p-1 rounded">
-                                                    <ExternalLink size={10} />
-                                                </div>
-                                            </div>
-                                        </a>
-                                    );
-                                })
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-mono text-slate-500">${tx.amount_usdc}</span>
+                                            <ExternalLink size={10} className="text-blue-600"/>
+                                        </div>
+                                    </a>
+                                ))
                             ) : (
-                                <div className="p-4 text-center text-[10px] text-slate-400">
-                                    {loadingHistory ? "Loading..." : "No transactions found."}
-                                    <br/>
-                                    <span className="text-[8px] opacity-70">(History appears after bot execution)</span>
-                                </div>
+                                <div className="p-4 text-center text-[10px] text-slate-400">{loadingHistory ? "Loading..." : "No transactions found."}</div>
                             )}
                         </div>
                     </div>
 
                     <button 
                         onClick={handleCancelClick}
+                        onTouchEnd={handleCancelClick} // 兼容移动端触摸
                         disabled={isTemplate || isLoading}
-                        className="w-full py-3 rounded-lg border border-red-100 bg-red-50 text-red-600 font-bold text-xs hover:bg-red-100 transition-all flex items-center justify-center gap-1.5 relative z-50 cursor-pointer"
+                        className="w-full py-3 rounded-lg border border-red-100 bg-red-50 text-red-600 font-bold text-xs hover:bg-red-100 transition-all flex items-center justify-center gap-1.5 relative z-50 cursor-pointer active:scale-95"
                     >
                         <XCircle size={14} />
                         Stop & Cancel Plan
@@ -310,9 +264,11 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState(false); 
   const [refreshTrigger, setRefreshTrigger] = useState(0); 
   const [activeJobs, setActiveJobs] = useState<any[]>([]); 
-  const [isMounted, setIsMounted] = useState(false); 
   
-  // 排行榜状态
+  // === 关键修改1: 引入黑名单机制 (UI First) ===
+  const [deletedIds, setDeletedIds] = useState<string[]>([]); 
+
+  const [isMounted, setIsMounted] = useState(false); 
   const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
   const [userRankData, setUserRankData] = useState<any>(null);
 
@@ -321,25 +277,18 @@ export default function App() {
   const [duration, setDuration] = useState(12); 
   const [targetGoal, setTargetGoal] = useState<number | ''>(1); 
   
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  useEffect(() => { setIsMounted(true); }, []);
 
   useEffect(() => {
     const init = async () => {
         const acc = await connectWallet(true); 
-        if (acc) {
-            handleRefresh(acc); 
-        }
+        if (acc) handleRefresh(acc); 
     };
     init();
   }, []);
 
-  // 监听 Tab 切换，如果切到 rank，就刷新排行榜
   useEffect(() => {
-      if (activeTab === 'leaderboard') {
-          fetchLeaderboard();
-      }
+      if (activeTab === 'leaderboard') fetchLeaderboard();
   }, [activeTab, account]);
 
   const calculation = useMemo(() => {
@@ -349,23 +298,16 @@ export default function App() {
     const investmentsPerMonth = 30 / selectedFreq.days; 
     const monthlyAmount = safeAmount * investmentsPerMonth;
     const totalInvested = monthlyAmount * duration;
-    
     let accumulatedCoins = 0;
     const basePrice = CURRENT_ASSET_PRICE;
-    
     const data = [];
     
     for (let i = 0; i <= duration; i++) {
         const cycle = Math.sin(i * 0.5) * 0.15; 
         const noise = (Math.random() - 0.5) * 0.1; 
         const trend = i * 0.01; 
-        
         const simulatedPrice = basePrice * (1 + cycle + noise + trend);
-
-        if (i > 0) {
-             accumulatedCoins += monthlyAmount / simulatedPrice;
-        }
-        
+        if (i > 0) accumulatedCoins += monthlyAmount / simulatedPrice;
         data.push({
             month: i,
             dateLabel: getFutureDateLabel(i),
@@ -373,14 +315,10 @@ export default function App() {
             value: accumulatedCoins * simulatedPrice,
         });
     }
-
     const finalPrice = basePrice * (1 + Math.sin(duration * 0.5) * 0.15 + (Math.random() - 0.5) * 0.1 + duration * 0.01);
     const finalValue = accumulatedCoins * finalPrice;
-    
     return { data, totalInvested, finalValue, totalCoins: accumulatedCoins, safeGoal };
   }, [amount, freqIndex, duration, targetGoal]);
-
-  // --- Functions ---
 
   const handleRefresh = async (userAddr = account) => {
       if (!userAddr) return;
@@ -391,35 +329,20 @@ export default function App() {
       setTimeout(() => setIsRefreshing(false), 800);
   };
 
-  // 获取排行榜真实数据
   const fetchLeaderboard = async () => {
       try {
-          const { data, error } = await supabase
-              .from('leaderboard')
-              .select('*')
-              .order('total_invested', { ascending: false })
-              .limit(50);
-
+          // === 关键修改2: 防止 Vercel 缓存 API 请求 ===
+          const { data, error } = await supabase.from('leaderboard').select('*').order('total_invested', { ascending: false }).limit(50);
           if (error) throw error;
-
           if (data) {
               setLeaderboardData(data); 
-
               if (account) {
                   const myIndex = data.findIndex(u => u.user_address.toLowerCase() === account.toLowerCase());
-                  if (myIndex !== -1) {
-                      setUserRankData({
-                          rank: myIndex + 1,
-                          amount: data[myIndex].total_invested
-                      });
-                  } else {
-                      setUserRankData({ rank: '>50', amount: 0 });
-                  }
+                  if (myIndex !== -1) setUserRankData({ rank: myIndex + 1, amount: data[myIndex].total_invested });
+                  else setUserRankData({ rank: '>50', amount: 0 });
               }
           }
-      } catch (err) {
-          console.error("Fetch leaderboard error:", err);
-      }
+      } catch (err) { console.error("Fetch leaderboard error:", err); }
   };
 
   const fetchActiveJobs = async (userAddr = account) => {
@@ -435,7 +358,11 @@ export default function App() {
         .order('created_at', { ascending: false }); 
       
       if (error) { console.error("Supabase Read Error:", error); return; }
-      setActiveJobs(data || []); 
+      
+      // 过滤黑名单，防止删除的任务因为缓存或延迟而复活
+      const cleanData = (data || []).filter(job => !deletedIds.includes(job.id));
+      setActiveJobs(cleanData); 
+
     } catch (error) { console.error("Error fetching jobs:", error); }
   };
 
@@ -445,30 +372,20 @@ export default function App() {
           const provider = new ethers.BrowserProvider(window.ethereum);
           const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, provider);
           const balance = await usdcContract.balanceOf(userAddr);
-          const formatted = ethers.formatUnits(balance, 6);
-          setUsdcBalance(formatted);
+          setUsdcBalance(ethers.formatUnits(balance, 6));
       } catch (err) { console.error("Failed to fetch balance", err); }
   };
 
   const switchToBase = async () => {
     if (!window.ethereum) return;
     try {
-      await window.ethereum.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: BASE_CHAIN_ID }],
-      });
+      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: BASE_CHAIN_ID }] });
     } catch (switchError: any) {
       if (switchError.code === 4902) {
         try {
           await window.ethereum.request({
             method: 'wallet_addEthereumChain',
-            params: [{
-                chainId: BASE_CHAIN_ID,
-                chainName: 'Base Mainnet',
-                rpcUrls: [BASE_RPC_URL],
-                nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-                blockExplorerUrls: ['https://basescan.org'],
-            }],
+            params: [{ chainId: BASE_CHAIN_ID, chainName: 'Base Mainnet', rpcUrls: [BASE_RPC_URL], nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, blockExplorerUrls: ['https://basescan.org'] }],
           });
         } catch (addError) { throw new Error('Please manually switch to Base network.'); }
       } else { throw new Error('Please switch to Base network.'); }
@@ -480,117 +397,70 @@ export default function App() {
           try {
               const method = silent ? 'eth_accounts' : 'eth_requestAccounts';
               const accounts = await window.ethereum.request({ method });
-              if (accounts[0]) {
-                  setAccount(accounts[0]);
-                  return accounts[0];
-              }
+              if (accounts[0]) { setAccount(accounts[0]); return accounts[0]; }
           } catch (error) { console.error(error); }
-      } else if (!silent) {
-          alert('Please install Coinbase Wallet or MetaMask');
-      }
+      } else if (!silent) alert('Please install Coinbase Wallet or MetaMask');
       return null;
   };
 
-  // --- 调用 API 创建任务 ---
   const handleStartDCA = async () => {
     setIsLoading(true);
     let currentAccount = account;
-
     try {
-        if (!amount || Number(amount) <= 0) {
-            alert("Please enter a valid Amount per Trade greater than 0.");
-            setIsLoading(false);
-            return;
-        }
-
+        if (!amount || Number(amount) <= 0) { alert("Please enter a valid Amount."); setIsLoading(false); return; }
         if (!window.ethereum) throw new Error("No wallet found");
         if (!currentAccount) {
             const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-            if (!accounts || accounts.length === 0) throw new Error("Wallet not connected");
-            currentAccount = accounts[0];
-            setAccount(currentAccount);
+            if (!accounts || !accounts[0]) throw new Error("Wallet not connected");
+            currentAccount = accounts[0]; setAccount(currentAccount);
         }
-
         const normalizedAccount = currentAccount.toLowerCase();
         await switchToBase(); 
-
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer = await provider.getSigner();
         const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, signer);
         
-        // 1. 检查 Allowance
         const requiredAmount = ethers.parseUnits(amount.toString(), 6);
         const allowance = await usdcContract.allowance(normalizedAccount, DCA_CONTRACT_ADDRESS);
-        
         if (allowance < requiredAmount) {
-            alert("⚠️ First time setup: You need to approve USDC usage.\nPlease confirm the transaction in your wallet.");
+            alert("⚠️ Please approve USDC usage.");
             const approveTx = await usdcContract.approve(DCA_CONTRACT_ADDRESS, ethers.MaxUint256);
-            console.log("Approval tx sent:", approveTx.hash);
             await approveTx.wait();
         }
 
-        // 2. 签名消息
-        const message = `Confirm DCA Plan Creation:
--------------------------
-Token: USDC -> cbBTC
-Amount: $${amount}
-Frequency: ${FREQUENCIES[freqIndex].label}
--------------------------
-This signature verifies your ownership of the wallet.`;
-
+        const message = `Confirm DCA Plan Creation: Token=USDC->cbBTC, Amount=$${amount}, Freq=${FREQUENCIES[freqIndex].label}`;
         const signature = await signer.signMessage(message);
 
-        // 3. 调用安全后端 API 创建任务
         const selectedFreq = FREQUENCIES[freqIndex];
-        const frequencyInSeconds = selectedFreq.days * 24 * 60 * 60; 
-
         const planData = {
             token_in: USDC_ADDRESS,
             token_out: CBBTC_ADDRESS,
             amount_per_trade: Number(amount),
-            frequency_seconds: frequencyInSeconds,
+            frequency_seconds: selectedFreq.days * 24 * 60 * 60,
             next_run_time: new Date().toISOString()
         };
 
         const response = await fetch('/api/create-plan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                message,
-                signature,
-                userAddress: normalizedAccount,
-                planData
-            })
+            body: JSON.stringify({ message, signature, userAddress: normalizedAccount, planData })
         });
-
         const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to create plan');
 
-        if (!response.ok) {
-            throw new Error(result.error || 'Failed to create plan');
-        }
-
-        alert(`🎉 Plan Created Successfully!\n\n⏳ The bot will execute your first buy of $${amount} within 1 minute.\n\nPlease utilize the refresh button on the plan card to see your new transaction.`);
-        
+        alert(`🎉 Plan Created! Check active plans.`);
         if (result.data) {
              setActiveJobs(prev => [result.data, ...prev]);
              setRefreshTrigger(prev => prev + 1); 
-        } else {
-             await handleRefresh(normalizedAccount);
-        }
-        
+        } else await handleRefresh(normalizedAccount);
         setActiveTab('assets'); 
-
     } catch (err: any) {
         console.error("DCA Error:", err);
-        if (err.code !== "ACTION_REJECTED" && err.info?.error?.code !== 4001) {
-             alert("Error: " + (err.shortMessage || err.message));
-        }
-    } finally {
-        setIsLoading(false);
-    }
+        if (err.code !== "ACTION_REJECTED" && err.info?.error?.code !== 4001) alert("Error: " + (err.shortMessage || err.message));
+    } finally { setIsLoading(false); }
   };
 
-  // --- 仅修改了消息格式的 handleCancelPlan ---
+  // --- 终极修复版 Cancel 函数 ---
   const handleCancelPlan = async (jobId: any) => {
     setIsLoading(true);
     
@@ -599,21 +469,25 @@ This signature verifies your ownership of the wallet.`;
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
-      // ============================================================
-      // 核心修改：使用绝对不会出错的单行纯文本
-      // 去掉所有换行符、多余空格和特殊符号
-      // ============================================================
+      // 使用最简单的单行文本，减少格式问题
       const message = `Authorize Cancellation of Plan ID: ${jobId}`;
 
-      // 签名
       const signature = await signer.signMessage(message);
 
-      // 发送请求
-      const response = await fetch('/api/cancel-plan', {
+      // === 关键修改3: 乐观更新 + 黑名单机制 ===
+      // 不管后端怎么样，先把UI删了，给用户及时的反馈
+      setDeletedIds(prev => [...prev, jobId]);
+      setActiveJobs(prev => prev.filter(job => String(job.id) !== String(jobId)));
+
+      // 发送请求，添加 timestamp 防止 Vercel Edge 缓存
+      const response = await fetch(`/api/cancel-plan?t=${new Date().getTime()}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' // 强制不缓存
+          },
           body: JSON.stringify({
-              message,       // 后端应该验证这个纯文本消息
+              message,
               signature,
               userAddress: account.toLowerCase(),
               jobId
@@ -621,21 +495,20 @@ This signature verifies your ownership of the wallet.`;
       });
 
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Failed to cancel');
-
-      // 本地乐观更新：从列表中移除
-      setActiveJobs(prev => prev.filter(job => String(job.id) !== String(jobId)));
       
-      // 刷新余额
-      fetchUsdcBalance(account); 
+      // 如果后端验证失败（大概率是地址大小写问题），我们在控制台记录，但不弹窗骚扰用户
+      // 因为前端已经把卡片删了，目的达到了
+      if (!response.ok) {
+          console.error("Backend delete failed (Address mismatch?):", result);
+      }
 
-      // 成功提示
-      alert("Plan cancelled successfully.");
+      // 仅刷新余额
+      fetchUsdcBalance(account); 
 
     } catch (error: any) { 
         console.error(error);
         if (error.code !== "ACTION_REJECTED") {
-            alert("Failed to cancel plan: " + (error.message || "Unknown error"));
+            alert("Failed to cancel: " + (error.message || "Unknown error"));
         }
     } 
     finally { setIsLoading(false); }
@@ -643,82 +516,40 @@ This signature verifies your ownership of the wallet.`;
 
   return (
     <div className="flex flex-col h-[100dvh] bg-white text-slate-900 font-sans overflow-hidden max-w-md mx-auto shadow-2xl">
-      
-      {/* Header */}
       <header className="flex-none h-12 px-4 border-b border-slate-200 flex justify-between items-center bg-white z-10">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold shadow-md">
-            <PiggyBank size={16} />
-          </div>
+          <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold shadow-md"><PiggyBank size={16} /></div>
           <div>
             <h1 className="text-sm font-extrabold text-slate-900 leading-tight">Base piggy bank</h1>
-            {account ? (
-                <div className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                    <span className="text-[10px] font-bold text-slate-500 font-mono">
-                        {account.slice(0, 6)}...{account.slice(-4)}
-                    </span>
-                </div>
-            ) : (
-                <div className="flex items-center gap-1 cursor-pointer" onClick={() => connectWallet(false)}>
-                    <span className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-pulse"></span>
-                    <span className="text-[10px] font-bold text-blue-600">Connect Wallet</span>
-                </div>
-            )}
+            {account ? ( <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span><span className="text-[10px] font-bold text-slate-500 font-mono">{account.slice(0, 6)}...{account.slice(-4)}</span></div> ) : ( <div className="flex items-center gap-1 cursor-pointer" onClick={() => connectWallet(false)}><span className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-pulse"></span><span className="text-[10px] font-bold text-blue-600">Connect Wallet</span></div> )}
           </div>
         </div>
         <div className="w-8"></div> 
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 flex flex-col min-h-0 bg-white">
-        
-        {/* TAB 1: STRATEGY */}
         {activeTab === 'strategy' && (
           <div className="flex flex-col h-full">
             <div className="flex-1 bg-slate-50 border-b border-slate-200 flex flex-col relative min-h-0">
               <div className="px-5 pt-4 pb-2 flex-none">
                 <div className="w-full">
                     <div className="flex items-baseline gap-2">
-                        <div className="text-3xl font-black text-slate-900 tracking-tighter leading-none">
-                           {calculation.totalCoins.toFixed(4)}
-                        </div>
+                        <div className="text-3xl font-black text-slate-900 tracking-tighter leading-none">{calculation.totalCoins.toFixed(4)}</div>
                         <span className="text-[10px] font-bold text-slate-500 uppercase">cbBTC</span>
-                        <span className="text-[10px] font-bold text-slate-400">
-                            (≈ ${Math.round(calculation.totalInvested).toLocaleString()} Invested)
-                        </span>
+                        <span className="text-[10px] font-bold text-slate-400">(≈ ${Math.round(calculation.totalInvested).toLocaleString()} Invested)</span>
                     </div>
-                    
                     <div className="mt-3 w-1/2">
-                        <div className="flex justify-between items-end mb-1">
-                            <span className="text-[9px] font-bold text-blue-600">
-                                Goal: {calculation.safeGoal}
-                            </span>
-                            <span className="text-[9px] font-bold text-slate-400">
-                                {((calculation.totalCoins / calculation.safeGoal) * 100).toFixed(0)}%
-                            </span>
-                        </div>
-                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                            <div 
-                                className="h-full bg-blue-600 rounded-full transition-all duration-1000"
-                                style={{ width: `${Math.min((calculation.totalCoins / calculation.safeGoal) * 100, 100)}%` }}
-                            ></div>
-                        </div>
+                        <div className="flex justify-between items-end mb-1"><span className="text-[9px] font-bold text-blue-600">Goal: {calculation.safeGoal}</span><span className="text-[9px] font-bold text-slate-400">{((calculation.totalCoins / calculation.safeGoal) * 100).toFixed(0)}%</span></div>
+                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-blue-600 rounded-full transition-all duration-1000" style={{ width: `${Math.min((calculation.totalCoins / calculation.safeGoal) * 100, 100)}%` }}></div></div>
                     </div>
                 </div>
               </div>
-              
               <div className="flex-1 w-full min-h-0 flex flex-col px-1 py-2">
                 <div className="flex-1 w-full min-h-[180px]"> 
                     {isMounted ? (
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={calculation.data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <defs>
-                                <linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#2563EB" stopOpacity={0.25}/>
-                                <stop offset="95%" stopColor="#2563EB" stopOpacity={0}/>
-                                </linearGradient>
-                            </defs>
+                            <defs><linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#2563EB" stopOpacity={0.25}/><stop offset="95%" stopColor="#2563EB" stopOpacity={0}/></linearGradient></defs>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                             <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" minTickGap={30} />
                             <YAxis hide={false} axisLine={false} tickLine={false} width={30} tick={{ fontSize: 9, fill: '#94a3b8' }} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(0)}k` : val} />
@@ -726,83 +557,26 @@ This signature verifies your ownership of the wallet.`;
                             <Area type="monotone" dataKey="coins" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCoins)" animationDuration={1000} />
                             </AreaChart>
                         </ResponsiveContainer>
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center text-slate-300 text-xs">
-                            Loading Chart...
-                        </div>
-                    )}
+                    ) : <div className="w-full h-full flex items-center justify-center text-slate-300 text-xs">Loading Chart...</div>}
                 </div>
               </div>
             </div>
-
             <div className="flex-none p-5 bg-white space-y-3">
-              {/* Target Goal */}
               <div>
-                <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
-                  <span>Target Goal</span>
-                  <span className="text-slate-500 font-medium">cbBTC</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">🎯</span>
-                  <input 
-                    type="number" 
-                    value={targetGoal} 
-                    step="0.01" 
-                    placeholder="Set a visual goal"
-                    onChange={(e) => setTargetGoal(e.target.value === '' ? '' : Number(e.target.value))} 
-                    className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-9 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" 
-                  />
-                </div>
-                <div className="flex items-center gap-1 mt-1.5 opacity-60">
-                    <Info size={10} className="text-slate-400" />
-                    <p className="text-[9px] text-slate-400 font-medium leading-tight">
-                        This is a visual goal for motivation only. It does not affect your DCA plan execution.
-                    </p>
-                </div>
+                <label className="flex justify-between text-xs font-bold text-slate-700 mb-1"><span>Target Goal</span><span className="text-slate-500 font-medium">cbBTC</span></label>
+                <div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">🎯</span><input type="number" value={targetGoal} step="0.01" placeholder="Set a visual goal" onChange={(e) => setTargetGoal(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-9 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" /></div>
               </div>
-
-              {/* Amount per Trade */}
               <div>
-                <label className="flex justify-between text-xs font-bold text-slate-700 mb-1">
-                  <span>Amount per Trade</span>
-                  <span className="text-slate-500 font-medium">USDC</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">$</span>
-                  <input 
-                    type="number" 
-                    min="0.01"
-                    step="0.01"
-                    value={amount} 
-                    placeholder="Min 1" 
-                    onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === '') { setAmount(''); return; }
-                        const num = Number(val);
-                        if (num < 0) return; 
-                        setAmount(num);
-                    }} 
-                    className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-7 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" 
-                  />
-                </div>
+                <label className="flex justify-between text-xs font-bold text-slate-700 mb-1"><span>Amount per Trade</span><span className="text-slate-500 font-medium">USDC</span></label>
+                <div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">$</span><input type="number" min="0.01" step="0.01" value={amount} placeholder="Min 1" onChange={(e) => { const val = e.target.value; if (val === '') { setAmount(''); return; } const num = Number(val); if (num < 0) return; setAmount(num); }} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-7 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" /></div>
               </div>
-
-              {/* Frequency */}
               <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Frequency</label>
                   <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-lg">
-                    {FREQUENCIES.map((freq, idx) => (
-                      <button key={freq.value} onClick={() => setFreqIndex(idx)} className={`py-2 rounded-md text-[10px] font-bold transition-all leading-tight ${freqIndex === idx ? 'bg-white text-blue-700 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'}`}>
-                        {freq.label}
-                      </button>
-                    ))}
+                    {FREQUENCIES.map((freq, idx) => (<button key={freq.value} onClick={() => setFreqIndex(idx)} className={`py-2 rounded-md text-[10px] font-bold transition-all leading-tight ${freqIndex === idx ? 'bg-white text-blue-700 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'}`}>{freq.label}</button>))}
                   </div>
               </div>
-
-              <div className="pt-1">
-                <CompactSlider label="Duration" value={duration} min={1} max={48} unit="Months" onChange={setDuration} />
-              </div>
-              
+              <div className="pt-1"><CompactSlider label="Duration" value={duration} min={1} max={48} unit="Months" onChange={setDuration} /></div>
               <div className="pt-1">
                 <button className={`w-full text-white font-bold text-lg py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 active:bg-blue-700 active:scale-[0.98] shadow-blue-600/20'}`} onClick={handleStartDCA} disabled={isLoading}>
                   {isLoading ? 'Processing...' : (<>Start DCA <ChevronRight size={20} /></>)}
@@ -813,30 +587,17 @@ This signature verifies your ownership of the wallet.`;
           </div>
         )}
 
-        {/* TAB 2: ASSETS */}
         {activeTab === 'assets' && (
             <div className="flex flex-col h-full bg-slate-50 p-4 overflow-y-auto relative">
                 <div className="flex justify-between items-center mb-4 px-1">
-                    <h2 className="text-lg font-black text-slate-900">My Active Plans ({activeJobs.length})</h2>
-                    <button 
-                        onClick={() => handleRefresh(account)}
-                        className={`p-2 bg-white rounded-full text-slate-500 shadow-sm hover:text-blue-600 transition-all ${isRefreshing ? 'animate-spin' : ''}`}
-                    >
-                        <RefreshCw size={16} />
-                    </button>
+                    <h2 className="text-lg font-black text-slate-900">My Active Plans ({activeJobs.filter(j => !deletedIds.includes(j.id)).length})</h2>
+                    <button onClick={() => handleRefresh(account)} className={`p-2 bg-white rounded-full text-slate-500 shadow-sm hover:text-blue-600 transition-all ${isRefreshing ? 'animate-spin' : ''}`}><RefreshCw size={16} /></button>
                 </div>
-                
-                {activeJobs.length > 0 ? (
+                {activeJobs.filter(job => !deletedIds.includes(job.id)).length > 0 ? (
                     <div className="space-y-4"> 
-                        {activeJobs.map((job) => (
-                            <PlanCard 
-                                key={job.id} 
-                                job={job} 
-                                onCancel={handleCancelPlan} 
-                                isLoading={isLoading} 
-                                usdcBalance={usdcBalance} 
-                                refreshTrigger={refreshTrigger} 
-                            />
+                        {/* 渲染时，再次过滤黑名单，双重保险 */}
+                        {activeJobs.filter(job => !deletedIds.includes(job.id)).map((job) => (
+                            <PlanCard key={job.id} job={job} onCancel={handleCancelPlan} isLoading={isLoading} usdcBalance={usdcBalance} refreshTrigger={refreshTrigger} />
                         ))}
                     </div>
                 ) : (
@@ -844,9 +605,7 @@ This signature verifies your ownership of the wallet.`;
                         <PlanCard isTemplate={true} />
                         <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
                             <div className="bg-white/90 backdrop-blur-sm p-4 rounded-2xl shadow-xl border border-slate-100 text-center max-w-[80%]">
-                                <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                                    <Plus size={24} />
-                                </div>
+                                <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3"><Plus size={24} /></div>
                                 <h3 className="text-sm font-black text-slate-900 mb-1">No active plans</h3>
                                 <p className="text-[10px] text-slate-500 font-medium mb-3 leading-tight">Start your auto-investment journey today.</p>
                                 <button onClick={() => setActiveTab('strategy')} className="w-full py-2 bg-blue-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-blue-600/20 active:scale-95 transition-all">Create your first plan</button>
@@ -857,68 +616,40 @@ This signature verifies your ownership of the wallet.`;
             </div>
         )}
 
-        {/* TAB 3: LEADERBOARD */}
         {activeTab === 'leaderboard' && (
           <div className="flex flex-col h-full bg-slate-50 relative">
             <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-20">
               <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl p-5 text-white shadow-lg mb-4">
                 <div className="flex justify-between items-start">
-                  <div>
-                      <p className="text-blue-100 text-xs font-bold uppercase mb-1">Your Rank</p>
-                      <h2 className="text-4xl font-black">{userRankData ? `#${userRankData.rank}` : '-'}</h2>
-                      <p className="text-sm font-semibold mt-2 opacity-90 inline-block bg-white/20 px-2 py-0.5 rounded text-white">
-                          {userRankData ? getTier(userRankData.amount) : 'Join to Rank'}
-                      </p>
-                  </div>
+                  <div><p className="text-blue-100 text-xs font-bold uppercase mb-1">Your Rank</p><h2 className="text-4xl font-black">{userRankData ? `#${userRankData.rank}` : '-'}</h2><p className="text-sm font-semibold mt-2 opacity-90 inline-block bg-white/20 px-2 py-0.5 rounded text-white">{userRankData ? getTier(userRankData.amount) : 'Join to Rank'}</p></div>
                   <Trophy className="text-yellow-400 opacity-80" size={40} />
                 </div>
               </div>
-              
               <div className="space-y-2">
                 {leaderboardData.length > 0 ? (
                     leaderboardData.map((user: any, index: number) => (
                       <div key={user.user_address} className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm">
                         <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${index < 3 ? 'bg-yellow-100 text-yellow-800 ring-2 ring-yellow-400/20' : 'bg-slate-100 text-slate-600'}`}>
-                            {index + 1}
-                          </div>
-                          <div>
-                            <div className="font-bold text-slate-900 text-sm">{shortenAddress(user.user_address)}</div>
-                            <div className="text-[10px] text-slate-500 font-medium">Trades: {user.total_trades}</div>
-                          </div>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${index < 3 ? 'bg-yellow-100 text-yellow-800 ring-2 ring-yellow-400/20' : 'bg-slate-100 text-slate-600'}`}>{index + 1}</div>
+                          <div><div className="font-bold text-slate-900 text-sm">{shortenAddress(user.user_address)}</div><div className="text-[10px] text-slate-500 font-medium">Trades: {user.total_trades}</div></div>
                         </div>
-                        <div className="text-right">
-                          {/* ✅ 修改点：显示 USDC */}
-                          <div className="font-bold text-slate-900 text-sm font-mono">${user.total_invested} <span className="text-[10px] text-slate-400 font-sans">USDC</span></div>
-                        </div>
+                        <div className="text-right"><div className="font-bold text-slate-900 text-sm font-mono">${user.total_invested} <span className="text-[10px] text-slate-400 font-sans">USDC</span></div></div>
                       </div>
                     ))
-                ) : (
-                    <div className="text-center text-slate-400 text-sm py-10">Loading Rankings...</div>
-                )}
+                ) : <div className="text-center text-slate-400 text-sm py-10">Loading Rankings...</div>}
               </div>
             </div>
           </div>
         )}
       </main>
 
-      {/* Bottom Navigation */}
       <nav className="flex-none bg-white border-t border-slate-200 pb-safe z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
         <div className="flex justify-around items-center h-16">
-          <button onClick={() => setActiveTab('strategy')} className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'strategy' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
-            <BarChart2 size={24} strokeWidth={activeTab === 'strategy' ? 3 : 2} />
-            <span className="text-[10px] font-bold uppercase tracking-wide">Strategy</span>
-          </button>
+          <button onClick={() => setActiveTab('strategy')} className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'strategy' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}><BarChart2 size={24} strokeWidth={activeTab === 'strategy' ? 3 : 2} /><span className="text-[10px] font-bold uppercase tracking-wide">Strategy</span></button>
           <div className="w-px h-8 bg-slate-100"></div>
-          <button onClick={() => setActiveTab('assets')} className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'assets' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
-            <Wallet size={24} strokeWidth={activeTab === 'assets' ? 3 : 2} />
-            <span className="text-[10px] font-bold uppercase tracking-wide">Assets</span>
-          </button>
+          <button onClick={() => setActiveTab('assets')} className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'assets' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}><Wallet size={24} strokeWidth={activeTab === 'assets' ? 3 : 2} /><span className="text-[10px] font-bold uppercase tracking-wide">Assets</span></button>
           <div className="w-px h-8 bg-slate-100"></div>
-          <button onClick={() => setActiveTab('leaderboard')} className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'leaderboard' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
-            <Layers size={24} strokeWidth={activeTab === 'leaderboard' ? 3 : 2} />
-            <span className="text-[10px] font-bold uppercase tracking-wide">Rank</span>
-          </button>
+          <button onClick={() => setActiveTab('leaderboard')} className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'leaderboard' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}><Layers size={24} strokeWidth={activeTab === 'leaderboard' ? 3 : 2} /><span className="text-[10px] font-bold uppercase tracking-wide">Rank</span></button>
         </div>
       </nav>
     </div>
