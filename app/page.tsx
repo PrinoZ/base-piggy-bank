@@ -11,7 +11,7 @@ import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, 
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount, useReadContract } from 'wagmi';
 import { parseAbi } from 'viem'; // 用于处理 ABI 兼容性
-import { useEthersSigner } from '@/app/lib/ethers-adapter'; // ⚠️ 确保你创建了 app/lib/ethers-adapter.ts
+import { useEthersSigner } from '../lib/ethers-adapter';
 
 // === CONSTANTS ===
 const CURRENT_ASSET_PRICE = 96000; 
