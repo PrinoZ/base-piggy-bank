@@ -7,20 +7,26 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank, LayoutGrid, XCircle, RefreshCw, Plus, ChevronDown, ChevronUp, Share2, AlertTriangle, ExternalLink, Info } from 'lucide-react';
 
+// === ✅ 关键修改 1: 引入 RainbowKit 和 Wagmi ===
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useAccount, useReadContract } from 'wagmi';
+import { parseAbi } from 'viem'; // 用于处理 ABI 兼容性
+import { useEthersSigner } from '@/app/lib/ethers-adapter'; // ⚠️ 确保你创建了 app/lib/ethers-adapter.ts
+
 // === CONSTANTS ===
-const BASE_CHAIN_ID = '0x2105'; 
-const BASE_RPC_URL = 'https://mainnet.base.org';
 const CURRENT_ASSET_PRICE = 96000; 
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; 
 const CBBTC_ADDRESS = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"; 
 const DCA_CONTRACT_ADDRESS = "0x9432f3cf09e63d4b45a8e292ad4d38d2e677ad0c";
 
-const ERC20_ABI = [
+// === ✅ 关键修改 2: ABI 兼容性修复 ===
+// Ethers 可以直接吃字符串数组，但 Wagmi 需要用 parseAbi 转换
+const ERC20_ABI = parseAbi([
   "function approve(address spender, uint256 amount) external returns (bool)",
   "function allowance(address owner, address spender) external view returns (uint256)",
   "function balanceOf(address account) external view returns (uint256)",
   "function decimals() view returns (uint8)"
-];
+]);
 
 const FREQUENCIES = [
   { label: 'Daily', days: 1, value: 'Daily' },
@@ -29,7 +35,7 @@ const FREQUENCIES = [
   { label: 'Bi-Weekly', days: 14, value: 'Bi-Weekly' }
 ];
 
-// === HELPERS ===
+// === HELPERS (保持不变) ===
 const getFutureDateLabel = (monthsToAdd: number) => {
   const date = new Date();
   date.setMonth(date.getMonth() + monthsToAdd);
@@ -65,7 +71,7 @@ const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
   </div>
 );
 
-// === COMPONENTS ===
+// === COMPONENTS (PlanCard 保持不变) ===
 const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, refreshTrigger }: any) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [history, setHistory] = useState<any[]>([]);
@@ -129,7 +135,6 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
         }
     };
 
-    // 强化事件处理，防止移动端点击穿透
     const handleCancelClick = (e: any) => {
         e.stopPropagation();
         e.preventDefault();
@@ -143,7 +148,7 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
             className={`bg-white rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden transition-all duration-300 ${isTemplate ? 'opacity-40 blur-[2px] grayscale' : 'cursor-pointer hover:shadow-md'}`}
             onClick={() => !isTemplate && setIsExpanded(!isExpanded)}
         >
-            <div className="absolute top-0 right-0 p-3 opacity-10 pointer-events-none">
+             <div className="absolute top-0 right-0 p-3 opacity-10 pointer-events-none">
                 <Activity size={80} className="text-blue-600" />
             </div>
             
@@ -239,7 +244,7 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
 
                     <button 
                         onClick={handleCancelClick}
-                        onTouchEnd={handleCancelClick} // 兼容移动端触摸
+                        onTouchEnd={handleCancelClick} 
                         disabled={isTemplate || isLoading}
                         className="w-full py-3 rounded-lg border border-red-100 bg-red-50 text-red-600 font-bold text-xs hover:bg-red-100 transition-all flex items-center justify-center gap-1.5 relative z-50 cursor-pointer active:scale-95"
                     >
@@ -258,14 +263,35 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('strategy'); 
-  const [account, setAccount] = useState(''); 
-  const [usdcBalance, setUsdcBalance] = useState<string | null>(null); 
+  
+  // === ✅ 关键修改 3: 使用 RainbowKit / Wagmi Hooks ===
+  const { address, isConnected } = useAccount(); // 替代 const [account, setAccount]
+  
+  // 使用我们自定义的 adapter 获取 Ethers Signer (用于 write 操作)
+  const signer = useEthersSigner(); 
+  
+  // 使用 Wagmi 自动获取余额 (Read 操作)
+  const { data: balanceData } = useReadContract({ 
+    address: USDC_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: {
+        enabled: !!address, // 只有连接时才查询
+        refetchInterval: 10000 // 每10秒刷新一次
+    }
+  });
+
+  // 将 wagmi 的余额 (BigInt) 转为字符串显示
+  const usdcBalance = useMemo(() => {
+    if (balanceData) return ethers.formatUnits(balanceData, 6);
+    return null;
+  }, [balanceData]);
+
   const [isLoading, setIsLoading] = useState(false); 
   const [isRefreshing, setIsRefreshing] = useState(false); 
   const [refreshTrigger, setRefreshTrigger] = useState(0); 
   const [activeJobs, setActiveJobs] = useState<any[]>([]); 
-  
-  // === 关键修改1: 引入黑名单机制 (UI First) ===
   const [deletedIds, setDeletedIds] = useState<string[]>([]); 
 
   const [isMounted, setIsMounted] = useState(false); 
@@ -279,17 +305,16 @@ export default function App() {
   
   useEffect(() => { setIsMounted(true); }, []);
 
+  // 当连接状态变化时，自动刷新数据
   useEffect(() => {
-    const init = async () => {
-        const acc = await connectWallet(true); 
-        if (acc) handleRefresh(acc); 
-    };
-    init();
-  }, []);
+    if (isConnected && address) {
+        handleRefresh(address);
+    }
+  }, [isConnected, address]);
 
   useEffect(() => {
       if (activeTab === 'leaderboard') fetchLeaderboard();
-  }, [activeTab, account]);
+  }, [activeTab, address]);
 
   const calculation = useMemo(() => {
     const safeAmount = amount === '' ? 0 : amount;
@@ -320,24 +345,23 @@ export default function App() {
     return { data, totalInvested, finalValue, totalCoins: accumulatedCoins, safeGoal };
   }, [amount, freqIndex, duration, targetGoal]);
 
-  const handleRefresh = async (userAddr = account) => {
+  const handleRefresh = async (userAddr = address) => {
       if (!userAddr) return;
       setIsRefreshing(true);
       await fetchActiveJobs(userAddr); 
-      await fetchUsdcBalance(userAddr);
+      // 余额现在由 useReadContract 自动管理，不需要手动 fetch
       setRefreshTrigger(prev => prev + 1);
       setTimeout(() => setIsRefreshing(false), 800);
   };
 
   const fetchLeaderboard = async () => {
       try {
-          // === 关键修改2: 防止 Vercel 缓存 API 请求 ===
           const { data, error } = await supabase.from('leaderboard').select('*').order('total_invested', { ascending: false }).limit(50);
           if (error) throw error;
           if (data) {
               setLeaderboardData(data); 
-              if (account) {
-                  const myIndex = data.findIndex(u => u.user_address.toLowerCase() === account.toLowerCase());
+              if (address) {
+                  const myIndex = data.findIndex(u => u.user_address.toLowerCase() === address.toLowerCase());
                   if (myIndex !== -1) setUserRankData({ rank: myIndex + 1, amount: data[myIndex].total_invested });
                   else setUserRankData({ rank: '>50', amount: 0 });
               }
@@ -345,7 +369,7 @@ export default function App() {
       } catch (err) { console.error("Fetch leaderboard error:", err); }
   };
 
-  const fetchActiveJobs = async (userAddr = account) => {
+  const fetchActiveJobs = async (userAddr = address) => {
     try {
       if (!userAddr) return;
       const normalizedAddr = userAddr.toLowerCase();
@@ -359,71 +383,35 @@ export default function App() {
       
       if (error) { console.error("Supabase Read Error:", error); return; }
       
-      // 过滤黑名单，防止删除的任务因为缓存或延迟而复活
       const cleanData = (data || []).filter(job => !deletedIds.includes(job.id));
       setActiveJobs(cleanData); 
 
     } catch (error) { console.error("Error fetching jobs:", error); }
   };
 
-  const fetchUsdcBalance = async (userAddr: string) => {
-      if (!window.ethereum) return;
-      try {
-          const provider = new ethers.BrowserProvider(window.ethereum);
-          const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, provider);
-          const balance = await usdcContract.balanceOf(userAddr);
-          setUsdcBalance(ethers.formatUnits(balance, 6));
-      } catch (err) { console.error("Failed to fetch balance", err); }
-  };
-
-  const switchToBase = async () => {
-    if (!window.ethereum) return;
-    try {
-      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: BASE_CHAIN_ID }] });
-    } catch (switchError: any) {
-      if (switchError.code === 4902) {
-        try {
-          await window.ethereum.request({
-            method: 'wallet_addEthereumChain',
-            params: [{ chainId: BASE_CHAIN_ID, chainName: 'Base Mainnet', rpcUrls: [BASE_RPC_URL], nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, blockExplorerUrls: ['https://basescan.org'] }],
-          });
-        } catch (addError) { throw new Error('Please manually switch to Base network.'); }
-      } else { throw new Error('Please switch to Base network.'); }
-    }
-  };
-
-  const connectWallet = async (silent = false) => {
-      if (typeof window.ethereum !== 'undefined') {
-          try {
-              const method = silent ? 'eth_accounts' : 'eth_requestAccounts';
-              const accounts = await window.ethereum.request({ method });
-              if (accounts[0]) { setAccount(accounts[0]); return accounts[0]; }
-          } catch (error) { console.error(error); }
-      } else if (!silent) alert('Please install Coinbase Wallet or MetaMask');
-      return null;
-  };
+  // === 移除: switchChain 和 connectWallet (RainbowKit 自动处理) ===
 
   const handleStartDCA = async () => {
+    if (!isConnected || !address || !signer) {
+        // 触发 RainbowKit 的连接弹窗 (通过隐藏按钮的点击或其他方式，但这里简单起见，提示用户)
+        alert("Please connect your wallet first.");
+        return;
+    }
+
     setIsLoading(true);
-    let currentAccount = account;
+    const normalizedAccount = address.toLowerCase();
+
     try {
         if (!amount || Number(amount) <= 0) { alert("Please enter a valid Amount."); setIsLoading(false); return; }
-        if (!window.ethereum) throw new Error("No wallet found");
-        if (!currentAccount) {
-            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-            if (!accounts || !accounts[0]) throw new Error("Wallet not connected");
-            currentAccount = accounts[0]; setAccount(currentAccount);
-        }
-        const normalizedAccount = currentAccount.toLowerCase();
-        await switchToBase(); 
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const signer = await provider.getSigner();
+        
+        // ⚠️ 使用 adapter 提供的 signer，代码与之前完全兼容
+        // 即使 ERC20_ABI 用了 parseAbi，Ethers v6 也能完美兼容它
         const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, signer);
         
         const requiredAmount = ethers.parseUnits(amount.toString(), 6);
         const allowance = await usdcContract.allowance(normalizedAccount, DCA_CONTRACT_ADDRESS);
+        
         if (allowance < requiredAmount) {
-            alert("⚠️ Please approve USDC usage.");
             const approveTx = await usdcContract.approve(DCA_CONTRACT_ADDRESS, ethers.MaxUint256);
             await approveTx.wait();
         }
@@ -460,50 +448,36 @@ export default function App() {
     } finally { setIsLoading(false); }
   };
 
-  // --- 终极修复版 Cancel 函数 ---
   const handleCancelPlan = async (jobId: any) => {
+    if (!signer) return;
     setIsLoading(true);
     
     try {
-      if (!window.ethereum) throw new Error("No wallet found");
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-
-      // 使用最简单的单行文本，减少格式问题
       const message = `Authorize Cancellation of Plan ID: ${jobId}`;
-
       const signature = await signer.signMessage(message);
 
-      // === 关键修改3: 乐观更新 + 黑名单机制 ===
-      // 不管后端怎么样，先把UI删了，给用户及时的反馈
       setDeletedIds(prev => [...prev, jobId]);
       setActiveJobs(prev => prev.filter(job => String(job.id) !== String(jobId)));
 
-      // 发送请求，添加 timestamp 防止 Vercel Edge 缓存
       const response = await fetch(`/api/cancel-plan?t=${new Date().getTime()}`, {
           method: 'POST',
           headers: { 
               'Content-Type': 'application/json',
-              'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' // 强制不缓存
+              'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
           },
           body: JSON.stringify({
               message,
               signature,
-              userAddress: account.toLowerCase(),
+              userAddress: address.toLowerCase(),
               jobId
           })
       });
 
       const result = await response.json();
-      
-      // 如果后端验证失败（大概率是地址大小写问题），我们在控制台记录，但不弹窗骚扰用户
-      // 因为前端已经把卡片删了，目的达到了
       if (!response.ok) {
-          console.error("Backend delete failed (Address mismatch?):", result);
+          console.error("Backend delete failed:", result);
       }
-
-      // 仅刷新余额
-      fetchUsdcBalance(account); 
+      // 余额会自动刷新
 
     } catch (error: any) { 
         console.error(error);
@@ -516,15 +490,24 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-white text-slate-900 font-sans overflow-hidden max-w-md mx-auto shadow-2xl">
-      <header className="flex-none h-12 px-4 border-b border-slate-200 flex justify-between items-center bg-white z-10">
+      <header className="flex-none h-16 px-4 border-b border-slate-200 flex justify-between items-center bg-white z-10">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold shadow-md"><PiggyBank size={16} /></div>
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold shadow-md"><PiggyBank size={18} /></div>
           <div>
-            <h1 className="text-sm font-extrabold text-slate-900 leading-tight">Base piggy bank</h1>
-            {account ? ( <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span><span className="text-[10px] font-bold text-slate-500 font-mono">{account.slice(0, 6)}...{account.slice(-4)}</span></div> ) : ( <div className="flex items-center gap-1 cursor-pointer" onClick={() => connectWallet(false)}><span className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-pulse"></span><span className="text-[10px] font-bold text-blue-600">Connect Wallet</span></div> )}
+            <h1 className="text-base font-extrabold text-slate-900 leading-tight">Base piggy bank</h1>
+            {/* 连接状态现在由 RainbowKit 按钮处理 */}
           </div>
         </div>
-        <div className="w-8"></div> 
+        
+        {/* === ✅ RainbowKit 按钮 === */}
+        <ConnectButton 
+            chainStatus="icon" 
+            showBalance={false}
+            accountStatus={{
+                smallScreen: 'avatar',
+                largeScreen: 'full',
+            }} 
+        />
       </header>
 
       <main className="flex-1 flex flex-col min-h-0 bg-white">
@@ -578,8 +561,9 @@ export default function App() {
               </div>
               <div className="pt-1"><CompactSlider label="Duration" value={duration} min={1} max={48} unit="Months" onChange={setDuration} /></div>
               <div className="pt-1">
+                {/* 这里的按钮逻辑现在只负责触发 handleStartDCA，如果没连接，函数内部会拦截 */}
                 <button className={`w-full text-white font-bold text-lg py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 active:bg-blue-700 active:scale-[0.98] shadow-blue-600/20'}`} onClick={handleStartDCA} disabled={isLoading}>
-                  {isLoading ? 'Processing...' : (<>Start DCA <ChevronRight size={20} /></>)}
+                  {isLoading ? 'Processing...' : (!isConnected ? 'Connect Wallet to Start' : (<>Start DCA <ChevronRight size={20} /></>))}
                 </button>
                 <p className="text-[10px] text-slate-400 mt-2 px-2 font-medium text-center">This is a non-custodial protocol. We don't hold any user funds.</p>
               </div>
@@ -591,11 +575,10 @@ export default function App() {
             <div className="flex flex-col h-full bg-slate-50 p-4 overflow-y-auto relative">
                 <div className="flex justify-between items-center mb-4 px-1">
                     <h2 className="text-lg font-black text-slate-900">My Active Plans ({activeJobs.filter(j => !deletedIds.includes(j.id)).length})</h2>
-                    <button onClick={() => handleRefresh(account)} className={`p-2 bg-white rounded-full text-slate-500 shadow-sm hover:text-blue-600 transition-all ${isRefreshing ? 'animate-spin' : ''}`}><RefreshCw size={16} /></button>
+                    <button onClick={() => handleRefresh(address)} className={`p-2 bg-white rounded-full text-slate-500 shadow-sm hover:text-blue-600 transition-all ${isRefreshing ? 'animate-spin' : ''}`}><RefreshCw size={16} /></button>
                 </div>
                 {activeJobs.filter(job => !deletedIds.includes(job.id)).length > 0 ? (
                     <div className="space-y-4"> 
-                        {/* 渲染时，再次过滤黑名单，双重保险 */}
                         {activeJobs.filter(job => !deletedIds.includes(job.id)).map((job) => (
                             <PlanCard key={job.id} job={job} onCancel={handleCancelPlan} isLoading={isLoading} usdcBalance={usdcBalance} refreshTrigger={refreshTrigger} />
                         ))}
