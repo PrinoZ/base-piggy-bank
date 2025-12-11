@@ -9,6 +9,46 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// Simple in-memory fallback cache for nonce (per runtime); use Supabase table when available.
+const nonceCache = new Map<string, number>();
+
+async function checkAndStoreNonce(nonce: string, userAddress: string, expiresAt: number) {
+  // In-memory guard
+  const cached = nonceCache.get(nonce);
+  if (cached && Date.now() < cached) return false;
+  nonceCache.set(nonce, expiresAt);
+
+  // Persistent guard (expects a table "nonce_store" with columns: nonce (pk), user_address, expires_at, created_at)
+  try {
+    const { data: existing } = await supabaseAdmin
+      .from('nonce_store')
+      .select('nonce, expires_at')
+      .eq('nonce', nonce)
+      .maybeSingle();
+
+    if (existing && new Date(existing.expires_at).getTime() > Date.now()) {
+      return false; // replay
+    }
+
+    // Clean up expired entry if present
+    if (existing) {
+      await supabaseAdmin.from('nonce_store').delete().eq('nonce', nonce);
+    }
+
+    const { error: upsertError } = await supabaseAdmin.from('nonce_store').upsert({
+      nonce,
+      user_address: userAddress.toLowerCase(),
+      expires_at: new Date(expiresAt).toISOString(),
+      created_at: new Date().toISOString(),
+    });
+    if (upsertError) throw upsertError;
+  } catch (err) {
+    console.warn('Nonce store check failed, falling back to in-memory only', err);
+  }
+
+  return true;
+}
+
 // 2. 初始化 Viem 客户端 (新增：用于验证 Smart Wallet 签名)
 const publicClient = createPublicClient({
   chain: base,
@@ -18,11 +58,20 @@ const publicClient = createPublicClient({
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { message, signature, userAddress, planData } = body;
+    const { message, signature, userAddress, planData, expiresAt, nonce } = body;
 
     // 参数检查
-    if (!message || !signature || !userAddress || !planData) {
+    if (!message || !signature || !userAddress || !planData || !expiresAt || !nonce) {
         return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
+    }
+
+    if (Date.now() > Number(expiresAt)) {
+      return NextResponse.json({ error: 'Request expired' }, { status: 400 });
+    }
+
+    const nonceOk = await checkAndStoreNonce(String(nonce), userAddress, Number(expiresAt));
+    if (!nonceOk) {
+      return NextResponse.json({ error: 'Nonce already used' }, { status: 400 });
     }
 
     console.log(`[Create Plan] Verifying signature for: ${userAddress}`);

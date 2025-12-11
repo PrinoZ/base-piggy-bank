@@ -19,7 +19,7 @@ const { wallets } = getDefaultWallets();
 
 const config = getDefaultConfig({
   appName: 'Base Piggy Bank',
-  projectId: 'YOUR_PROJECT_ID', // ⚠️ 请去 https://cloud.walletconnect.com 申请一个 ID，或者暂时留空测试
+  projectId: 217245ec2cae6778a51d6168f3e098ea || '', // ⚠️ 生产环境必须填入 WalletConnect projectId
   wallets: [
     ...wallets,
     {

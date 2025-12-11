@@ -1,14 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // ✅ 使用 Next.js 原生配置来处理外部依赖 (替代 webpack.externals)
-  serverExternalPackages: [
-    'pino', 
-    'pino-pretty', 
-    'lokijs', 
-    'encoding', 
-    '@walletconnect/utils'
-  ],
+  // ...保持你原有的其他配置
+  webpack: (config) => {
+    // 忽略这些在客户端构建中不需要的库
+    config.externals.push('pino-pretty', 'lokijs', 'encoding');
+    return config;
+  },
 };
 
 export default nextConfig;

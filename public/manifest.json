@@ -2,7 +2,7 @@
   "name": "Base Piggy Bank",
   "short_name": "PiggyBank",
   "description": "Auto-invest in cbBTC on Base",
-  "start_url": "https://base-piggy-bank-1hy2kfa3k-prinozs-projects.vercel.app",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#2563EB",

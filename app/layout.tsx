@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// ⚠️ 重要：请将此处替换为你部署到 Vercel 后的真实域名 (不要带末尾的斜杠)
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://your-production-domain.com';
+// ⚠️ 重要：部署域名（默认指向 vercel 线上环境，可用 env 覆盖）
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://base-piggy-bank.vercel.app';
 
 export const metadata: Metadata = {
   // 1. 基础信息
@@ -58,6 +58,7 @@ export const metadata: Metadata = {
     "fc:frame": "vNext",
     "fc:frame:image": `${APP_URL}/og-image.png`,
     "fc:frame:image:aspect_ratio": "1.91:1",
+    "fc:frame:post_url": `${APP_URL}/api/frame`, 
     "fc:frame:button:1": "Launch Piggy Bank 🚀",
     "fc:frame:button:1:action": "link", 
     "fc:frame:button:1:target": APP_URL, 
