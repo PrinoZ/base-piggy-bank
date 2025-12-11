@@ -1,16 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // 保持你原有的其他配置...
-  webpack: (config) => {
-    config.externals.push(
-      'pino-pretty', 
-      'lokijs', 
-      'encoding',
-      '@react-native-async-storage/async-storage' // 👈 新增这一行
-    );
-    return config;
-  },
+  // ✅ 使用 Next.js 原生配置来处理外部依赖 (替代 webpack.externals)
+  serverExternalPackages: [
+    'pino', 
+    'pino-pretty', 
+    'lokijs', 
+    'encoding', 
+    '@walletconnect/utils'
+  ],
 };
 
 export default nextConfig;
