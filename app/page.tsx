@@ -378,14 +378,39 @@ export default function App() {
 
   const fetchLeaderboard = async () => {
       try {
-          const { data, error } = await supabase.from('leaderboard').select('*').order('total_invested', { ascending: false }).limit(50);
+          // 获取前15名用于显示
+          const { data, error } = await supabase.from('leaderboard').select('*').order('total_invested', { ascending: false }).limit(15);
           if (error) throw error;
           if (data) {
               setLeaderboardData(data); 
               if (address) {
-                  const myIndex = data.findIndex(u => u.user_address.toLowerCase() === address.toLowerCase());
-                  if (myIndex !== -1) setUserRankData({ rank: myIndex + 1, amount: data[myIndex].total_invested });
-                  else setUserRankData({ rank: '>50', amount: 0 });
+                  const normalizedAddress = address.toLowerCase();
+                  const myIndex = data.findIndex(u => u.user_address.toLowerCase() === normalizedAddress);
+                  
+                  if (myIndex !== -1) {
+                      // 用户在前15名内
+                      setUserRankData({ rank: myIndex + 1, amount: data[myIndex].total_invested });
+                  } else {
+                      // 用户不在前15名，查询实际排名
+                      const { data: allData, error: rankError } = await supabase
+                          .from('leaderboard')
+                          .select('user_address, total_invested')
+                          .order('total_invested', { ascending: false });
+                      
+                      if (!rankError && allData) {
+                          const actualIndex = allData.findIndex(u => u.user_address.toLowerCase() === normalizedAddress);
+                          if (actualIndex !== -1) {
+                              setUserRankData({ 
+                                  rank: actualIndex + 1, 
+                                  amount: allData[actualIndex].total_invested 
+                              });
+                          } else {
+                              setUserRankData({ rank: 'N/A', amount: 0 });
+                          }
+                      } else {
+                          setUserRankData({ rank: 'N/A', amount: 0 });
+                      }
+                  }
               }
           }
       } catch (err) { console.error("Fetch leaderboard error:", err); }
