@@ -315,18 +315,46 @@ export default function App() {
   const [targetGoal, setTargetGoal] = useState<number | ''>(1); 
   const [frameContext, setFrameContext] = useState<any>(null);
   const [baseContext, setBaseContext] = useState<any>(null);
+  const [baseReadySent, setBaseReadySent] = useState(false);
   
   useEffect(() => { setIsMounted(true); }, []);
 
   // Base Mini App host handshake: tells Base the app is ready to display (otherwise you may only see the splash screen)
   useEffect(() => {
-    try {
-      // @ts-ignore
-      const baseActions = window?.base?.actions;
-      if (baseActions?.ready) baseActions.ready();
-    } catch (e) {
-      // no-op: not in Base host
-    }
+    let done = false;
+    const tryReady = async () => {
+      if (done) return;
+      try {
+        // Host APIs can arrive asynchronously; retry briefly.
+        // @ts-ignore
+        const readyFn =
+          window?.base?.actions?.ready ||
+          // @ts-ignore
+          window?.base?.miniapp?.actions?.ready;
+
+        if (typeof readyFn === 'function') {
+          done = true;
+          await Promise.resolve(readyFn());
+          setBaseReadySent(true);
+        }
+      } catch {
+        // ignore and keep retrying until timeout
+      }
+    };
+
+    // Try immediately, then retry for a few seconds.
+    tryReady();
+    const interval = setInterval(tryReady, 250);
+    const timeout = setTimeout(() => {
+      done = true;
+      clearInterval(interval);
+    }, 8000);
+
+    return () => {
+      done = true;
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
   }, []);
 
   // Base Mini App / Frame context: best-effort parse from URL search or window
@@ -614,7 +642,9 @@ export default function App() {
             <h1 className="text-base font-extrabold text-slate-900 leading-tight">Base piggy bank</h1>
             {/* 连接状态现在由 RainbowKit 按钮处理 */}
             {baseContext && (
-              <p className="text-[10px] font-semibold text-blue-600">Base Mini App Context Detected</p>
+              <p className="text-[10px] font-semibold text-blue-600">
+                Base Mini App Context Detected{baseReadySent ? ' · Ready' : ' · Waiting…'}
+              </p>
             )}
           </div>
         </div>
