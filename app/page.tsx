@@ -10,7 +10,8 @@ import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, 
 // === �?关键修改 1: 引入 RainbowKit �?Wagmi ===
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount, useReadContract, useChainId, useSwitchChain } from 'wagmi';
-import { parseAbi } from 'viem'; // 用于处理 ABI 兼容�?import { useEthersSigner } from '../lib/ethers-adapter';
+import { parseAbi } from 'viem'; // 用于处理 ABI 兼容
+import { useEthersSigner } from '../lib/ethers-adapter';
 
 // === CONSTANTS ===
 const CURRENT_ASSET_PRICE = 96000; 
@@ -167,7 +168,7 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
                             <Activity size={20} />
                         </div>
                         <div>
-                            <h3 className="text-base font-extrabold text-slate-900">USDC <span className="text-slate-400 mx-1">�?/span> cbBTC</h3>
+                            <h3 className="text-base font-extrabold text-slate-900">USDC <span className="text-slate-400 mx-1">→</span> cbBTC</h3>
                             <div className="flex items-center gap-1.5 mt-0.5">
                                 <span className={`w-2 h-2 rounded-full ${isTemplate ? 'bg-slate-400' : 'bg-green-500 animate-pulse'}`}></span>
                                 <span className={`text-[10px] font-bold uppercase tracking-wide ${isTemplate ? 'text-slate-500' : 'text-green-600'}`}>
@@ -281,10 +282,12 @@ export default function App() {
     args: address ? [address] : undefined,
     query: {
         enabled: !!address, // 只有连接时才查询
-        refetchInterval: 10000 // �?0秒刷新一�?    }
+        refetchInterval: 10000, // 10秒刷新一次
+    }
   });
 
-  // �?wagmi 的余�?(BigInt) 转为字符串显�?  const usdcBalance = useMemo(() => {
+  // wagmi 的余额(BigInt) 转为字符串显示
+  const usdcBalance = useMemo(() => {
     if (balanceData) return ethers.formatUnits(balanceData, 6);
     return null;
   }, [balanceData]);
@@ -324,7 +327,8 @@ export default function App() {
     }
   }, []);
 
-  // 当连接状态变化时，自动刷新数�?  useEffect(() => {
+  // 当连接状态变化时，自动刷新数据
+  useEffect(() => {
     if (isConnected && address) {
         handleRefresh(address);
     }
@@ -582,7 +586,7 @@ export default function App() {
                     <div className="flex items-baseline gap-2">
                         <div className="text-3xl font-black text-slate-900 tracking-tighter leading-none">{calculation.totalCoins.toFixed(4)}</div>
                         <span className="text-[10px] font-bold text-slate-500 uppercase">cbBTC</span>
-                        <span className="text-[10px] font-bold text-slate-400">(�?${Math.round(calculation.totalInvested).toLocaleString()} Invested)</span>
+                        <span className="text-[10px] font-bold text-slate-400">(≈ ${Math.round(calculation.totalInvested).toLocaleString()} Invested)</span>
                     </div>
                     <div className="mt-3 w-1/2">
                         <div className="flex justify-between items-end mb-1"><span className="text-[9px] font-bold text-blue-600">Goal: {calculation.safeGoal}</span><span className="text-[9px] font-bold text-slate-400">{((calculation.totalCoins / calculation.safeGoal) * 100).toFixed(0)}%</span></div>
@@ -701,3 +705,4 @@ export default function App() {
       </nav>
     </div>
   );
+}
