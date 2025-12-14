@@ -1,176 +1,88 @@
-# Supabase CLI (v1)
+# Base Piggy Bank
 
-[![Coverage Status](https://coveralls.io/repos/github/supabase/cli/badge.svg?branch=main)](https://coveralls.io/github/supabase/cli?branch=main)
+Base Piggy Bank is a mini app for Dollar Cost Averaging (DCA) from USDC to cbBTC on Base chain. It's non-custodial, simple to use, and supports Farcaster Frame / Base Mini App experience.
 
-[Supabase](https://supabase.io) is an open source Firebase alternative. We're building the features of Firebase using enterprise-grade open source tools.
+## ✨ Features
 
-This repository contains all the functionality for Supabase CLI.
+- **One-click wallet connection** (RainbowKit + wagmi) with automatic USDC balance reading
+- **Configure DCA plans**: Set amount per trade, frequency, and duration; create/cancel plans
+- **Transaction history**: View plan execution records and transaction history
+- **Leaderboard**: See rankings with shortened address display
+- **Share functionality**: Share results with site links; social platforms will fetch OG preview images
+- **EIP-1271 compatible**: Smart wallet signature verification support
 
-- [x] Running Supabase locally
-- [x] Managing database migrations
-- [x] Pushing your local changes to production
-- [x] Create and Deploy Supabase Functions
-- [ ] Manage your Supabase Account
-- [x] Manage your Supabase Projects
-- [x] Generating types directly from your database schema
-- [ ] Generating API and validation schemas from your database
+## 🚀 Quick Start
 
-## Getting started
+1. Open the app: [https://base-piggy-bank.vercel.app](https://base-piggy-bank.vercel.app)
+2. Connect your wallet (recommended: Base Mainnet) and ensure you have USDC
+3. Configure amount per trade, frequency, and duration, then click **"Start DCA"**
+4. View or cancel plans in the **"Assets"** tab; check rankings in the **"Rank"** tab
 
-### Install the CLI
+## 🌐 Supported Networks
 
-Available via [NPM](https://www.npmjs.com) as dev dependency. To install:
+- **Base Mainnet** (Chain ID: 8453)
+  - If not on Base, you'll be prompted and can switch with one click
+
+## 🔒 Security & Signatures
+
+- All create/cancel operations require signatures
+- Signatures include nonce and 5-minute expiration; backend performs replay attack prevention
+- Backend uses Supabase to record plans and execution logs
+- Service Role key is only used server-side; never exposed to frontend
+
+## 📱 Frame / Mini App
+
+- **Frame post_url**: `/api/frame` (provides Launch button)
+- **Preview image**: `/og-image.png`
+- **Mini App manifest**: `/miniapp.json`
+- **Signature file**: `/miniapp.sig` (must match manifest domain and paths)
+
+## 🛠️ Development & Deployment
+
+### Environment Variables
+
+```env
+NEXT_PUBLIC_APP_URL=https://base-piggy-bank.vercel.app
+NEXT_PUBLIC_WC_PROJECT_ID=your_walletconnect_project_id
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+MOCK_DATA_SECRET=your_secret_for_mock_data_generation
+```
+
+### Installation
 
 ```bash
-npm i supabase --save-dev
+npm install
 ```
 
-To install the beta release channel:
+### Local Development
 
 ```bash
-npm i supabase@beta --save-dev
+npm run dev
 ```
 
-> **Note**
-For Bun versions below v1.0.17, you must add `supabase` as a [trusted dependency](https://bun.sh/guides/install/trusted) before running `bun add -D supabase`.
+### Production Deployment
 
-<details>
-  <summary><b>macOS</b></summary>
+Deploy to Vercel or any platform that supports Next.js.
 
-  Available via [Homebrew](https://brew.sh). To install:
+## 📦 Assets
 
-  ```sh
-  brew install supabase/tap/supabase
-  ```
+- **App icons**: `/icon-192.png`, `/icon-512.png`
+- **Preview image**: `/og-image.png`
+- **PWA manifest**: `/manifest.json`
 
-  To install the beta release channel:
-  
-  ```sh
-  brew install supabase/tap/supabase-beta
-  brew link --overwrite supabase-beta
-  ```
-  
-  To upgrade:
+## ❓ FAQ
 
-  ```sh
-  brew upgrade supabase
-  ```
-</details>
+**Q: Not seeing preview cards when sharing?**  
+A: Ensure your domain is crawlable and OG/Frame meta tags are aligned with your production domain.
 
-<details>
-  <summary><b>Windows</b></summary>
+**Q: Smart wallet signature failing?**  
+A: Backend uses `viem.verifyMessage` with EIP-1271 support. If it still fails, check if your wallet is on Base Mainnet.
 
-  Available via [Scoop](https://scoop.sh). To install:
+**Q: Replay attack protection?**  
+A: Signatures include nonce + expiration time. Backend stores nonces to prevent reuse.
 
-  ```powershell
-  scoop bucket add supabase https://github.com/supabase/scoop-bucket.git
-  scoop install supabase
-  ```
+## 📄 License
 
-  To upgrade:
-
-  ```powershell
-  scoop update supabase
-  ```
-</details>
-
-<details>
-  <summary><b>Linux</b></summary>
-
-  Available via [Homebrew](https://brew.sh) and Linux packages.
-
-  #### via Homebrew
-
-  To install:
-
-  ```sh
-  brew install supabase/tap/supabase
-  ```
-
-  To upgrade:
-
-  ```sh
-  brew upgrade supabase
-  ```
-
-  #### via Linux packages
-
-  Linux packages are provided in [Releases](https://github.com/supabase/cli/releases). To install, download the `.apk`/`.deb`/`.rpm`/`.pkg.tar.zst` file depending on your package manager and run the respective commands.
-
-  ```sh
-  sudo apk add --allow-untrusted <...>.apk
-  ```
-
-  ```sh
-  sudo dpkg -i <...>.deb
-  ```
-
-  ```sh
-  sudo rpm -i <...>.rpm
-  ```
-
-  ```sh
-  sudo pacman -U <...>.pkg.tar.zst
-  ```
-</details>
-
-<details>
-  <summary><b>Other Platforms</b></summary>
-
-  You can also install the CLI via [go modules](https://go.dev/ref/mod#go-install) without the help of package managers.
-
-  ```sh
-  go install github.com/supabase/cli@latest
-  ```
-
-  Add a symlink to the binary in `$PATH` for easier access:
-
-  ```sh
-  ln -s "$(go env GOPATH)/cli" /usr/bin/supabase
-  ```
-
-  This works on other non-standard Linux distros.
-</details>
-
-<details>
-  <summary><b>Community Maintained Packages</b></summary>
-
-  Available via [pkgx](https://pkgx.sh/). Package script [here](https://github.com/pkgxdev/pantry/blob/main/projects/supabase.com/cli/package.yml).
-  To install in your working directory:
-
-  ```bash
-  pkgx install supabase
-  ```
-
-  Available via [Nixpkgs](https://nixos.org/). Package script [here](https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/tools/supabase-cli/default.nix).
-</details>
-
-### Run the CLI
-
-```bash
-supabase help
-```
-
-Or using npx:
-
-```bash
-npx supabase help
-```
-
-## Docs
-
-Command & config reference can be found [here](https://supabase.com/docs/reference/cli/about).
-
-## Breaking changes
-
-The CLI is a WIP and we're still exploring the design, so expect a lot of breaking changes. We try to document migration steps in [Releases](https://github.com/supabase/cli/releases). Please file an issue if these steps don't work!
-
-## Developing
-
-To run from source:
-
-```sh
-# Go >= 1.20
-go run . help
-```
-
+See [LICENSE](LICENSE) file for details.

@@ -4,15 +4,24 @@
     "payload": "eyJkb21haW4iOiA...",
     "signature": "MHgyY..."
   },
-  "frame": {
+  "miniapp": {
     "version": "1",
-    "name": "Base piggy bank",
-    "iconUrl": "https://base-piggy-bank.vercel.app/icon.png",
+    "name": "Base Piggy Bank",
     "homeUrl": "https://base-piggy-bank.vercel.app/",
-    "imageUrl": "https://base-piggy-bank.vercel.app/og-image.png",
-    "buttonTitle": "Open Piggy Bank",
-    "splashImageUrl": "https://base-piggy-bank.vercel.app/splash.png",
-    "splashBackgroundColor": "#ffffff",
-    "webhookUrl": "https://base-piggy-bank.vercel.app/api/webhook"
+    "iconUrl": "https://base-piggy-bank.vercel.app/icon-512.png",
+    "splashImageUrl": "https://base-piggy-bank.vercel.app/icon-512.png",
+    "splashBackgroundColor": "#2563EB",
+    "subtitle": "Auto-invest USDC to cbBTC",
+    "description": "Non-custodial Dollar Cost Averaging on Base. Set it and forget it.",
+    "tagline": "Auto-invest on Base",
+    "primaryCategory": "finance",
+    "tags": ["finance", "defi", "dca", "bitcoin", "base"],
+    "heroImageUrl": "https://base-piggy-bank.vercel.app/og-image.png",
+    "screenshotUrls": [
+      "https://base-piggy-bank.vercel.app/og-image.png"
+    ],
+    "ogTitle": "Base Piggy Bank",
+    "ogDescription": "Auto-invest USDC to cbBTC on Base. Non-custodial DCA.",
+    "ogImageUrl": "https://base-piggy-bank.vercel.app/og-image.png"
   }
 }

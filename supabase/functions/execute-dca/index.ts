@@ -122,6 +122,36 @@ Deno.serve(async (req) => {
           
       if (logError) console.error("Failed to log transaction:", logError);
 
+      // === 更新排行榜（仅当交易成功时） ===
+      if (status === 'SUCCESS') {
+        // 获取用户当前的排行榜数据
+        const { data: currentLeaderboard } = await supabase
+          .from('leaderboard_table')
+          .select('total_invested, total_trades')
+          .eq('user_address', job.user_address.toLowerCase())
+          .maybeSingle();
+
+        const currentInvested = currentLeaderboard?.total_invested || 0;
+        const currentTrades = currentLeaderboard?.total_trades || 0;
+
+        // Upsert 更新排行榜
+        const { error: leaderboardError } = await supabase
+          .from('leaderboard_table')
+          .upsert({
+            user_address: job.user_address.toLowerCase(),
+            total_invested: Number(currentInvested) + Number(job.amount_per_trade),
+            total_trades: Number(currentTrades) + 1,
+            last_trade_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'user_address',
+          });
+
+        if (leaderboardError) {
+          console.error(`Failed to update leaderboard for ${job.user_address}:`, leaderboardError);
+        }
+      }
+
       // 更新下次运行时间
       const nextRun = new Date(new Date().getTime() + job.frequency_seconds * 1000)
       

@@ -9,7 +9,7 @@ import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, 
 
 // === ✅ 关键修改 1: 引入 RainbowKit 和 Wagmi ===
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount, useReadContract } from 'wagmi';
+import { useAccount, useReadContract, useChainId, useSwitchChain } from 'wagmi';
 import { parseAbi } from 'viem'; // 用于处理 ABI 兼容性
 import { useEthersSigner } from '../lib/ethers-adapter';
 
@@ -18,6 +18,7 @@ const CURRENT_ASSET_PRICE = 96000;
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; 
 const CBBTC_ADDRESS = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"; 
 const DCA_CONTRACT_ADDRESS = "0x9432f3cf09e63d4b45a8e292ad4d38d2e677ad0c";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
 
 // === ✅ 关键修改 2: ABI 兼容性修复 ===
 // Ethers 可以直接吃字符串数组，但 Wagmi 需要用 parseAbi 转换
@@ -123,9 +124,10 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
     const handleShare = async (e: any) => {
         e.stopPropagation(); 
         const text = `I'm auto-investing cbBTC via @BasePiggyBank! 🐷\n\nAccumulated: ${realStats.btc.toFixed(4)} BTC\nInvested: $${realStats.usd}\n\nStart your journey on Base! 🚀`;
-        const url = window.location.href;
+        // 引导到具备 OG/Frame 预览的页面（主页或 /embed），让社交平台抓取 og-image
+        const url = `${APP_URL || window.location.origin}/`;
         try {
-            if (navigator.share) await navigator.share({ title: 'Base Piggy Bank', text: text, url: url });
+            if (navigator.share) await navigator.share({ title: 'Base Piggy Bank', text: text, url });
             else throw new Error("Share API not supported");
         } catch (error) {
             try {
@@ -266,6 +268,8 @@ export default function App() {
   
   // === ✅ 关键修改 3: 使用 RainbowKit / Wagmi Hooks ===
   const { address, isConnected } = useAccount(); // 替代 const [account, setAccount]
+  const chainId = useChainId();
+  const { switchChain, isPending: isSwitchingChain } = useSwitchChain();
   
   // 使用我们自定义的 adapter 获取 Ethers Signer (用于 write 操作)
   const signer = useEthersSigner(); 
@@ -302,8 +306,26 @@ export default function App() {
   const [freqIndex, setFreqIndex] = useState(0); 
   const [duration, setDuration] = useState(12); 
   const [targetGoal, setTargetGoal] = useState<number | ''>(1); 
+  const [frameContext, setFrameContext] = useState<any>(null);
+  const [baseContext, setBaseContext] = useState<any>(null);
   
   useEffect(() => { setIsMounted(true); }, []);
+
+  // Base Mini App / Frame context: best-effort parse from URL search or window
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const frameCtx = params.get('frameContext');
+      const baseCtx = params.get('baseContext');
+      if (frameCtx) setFrameContext(JSON.parse(decodeURIComponent(frameCtx)));
+      if (baseCtx) setBaseContext(JSON.parse(decodeURIComponent(baseCtx)));
+      // Some hosts expose window.base?.context
+      // @ts-ignore
+      if (!baseCtx && window?.base?.context) setBaseContext(window.base.context);
+    } catch (err) {
+      console.warn('Context parse failed', err);
+    }
+  }, []);
 
   // 当连接状态变化时，自动刷新数据
   useEffect(() => {
@@ -356,14 +378,39 @@ export default function App() {
 
   const fetchLeaderboard = async () => {
       try {
-          const { data, error } = await supabase.from('leaderboard').select('*').order('total_invested', { ascending: false }).limit(50);
+          // 获取前15名用于显示
+          const { data, error } = await supabase.from('leaderboard').select('*').order('total_invested', { ascending: false }).limit(15);
           if (error) throw error;
           if (data) {
               setLeaderboardData(data); 
               if (address) {
-                  const myIndex = data.findIndex(u => u.user_address.toLowerCase() === address.toLowerCase());
-                  if (myIndex !== -1) setUserRankData({ rank: myIndex + 1, amount: data[myIndex].total_invested });
-                  else setUserRankData({ rank: '>50', amount: 0 });
+                  const normalizedAddress = address.toLowerCase();
+                  const myIndex = data.findIndex(u => u.user_address.toLowerCase() === normalizedAddress);
+                  
+                  if (myIndex !== -1) {
+                      // 用户在前15名内
+                      setUserRankData({ rank: myIndex + 1, amount: data[myIndex].total_invested });
+                  } else {
+                      // 用户不在前15名，查询实际排名
+                      const { data: allData, error: rankError } = await supabase
+                          .from('leaderboard')
+                          .select('user_address, total_invested')
+                          .order('total_invested', { ascending: false });
+                      
+                      if (!rankError && allData) {
+                          const actualIndex = allData.findIndex(u => u.user_address.toLowerCase() === normalizedAddress);
+                          if (actualIndex !== -1) {
+                              setUserRankData({ 
+                                  rank: actualIndex + 1, 
+                                  amount: allData[actualIndex].total_invested 
+                              });
+                          } else {
+                              setUserRankData({ rank: 'N/A', amount: 0 });
+                          }
+                      } else {
+                          setUserRankData({ rank: 'N/A', amount: 0 });
+                      }
+                  }
               }
           }
       } catch (err) { console.error("Fetch leaderboard error:", err); }
@@ -403,6 +450,9 @@ export default function App() {
 
     try {
         if (!amount || Number(amount) <= 0) { alert("Please enter a valid Amount."); setIsLoading(false); return; }
+      const now = Date.now();
+      const expiresAt = now + 5 * 60 * 1000; // 5 分钟有效
+      const nonce = crypto.randomUUID ? crypto.randomUUID() : `${now}-${Math.random()}`;
         
         // ⚠️ 使用 adapter 提供的 signer，代码与之前完全兼容
         // 即使 ERC20_ABI 用了 parseAbi，Ethers v6 也能完美兼容它
@@ -416,7 +466,7 @@ export default function App() {
             await approveTx.wait();
         }
 
-        const message = `Confirm DCA Plan Creation: Token=USDC->cbBTC, Amount=$${amount}, Freq=${FREQUENCIES[freqIndex].label}`;
+        const message = `Confirm DCA Plan Creation: Token=USDC->cbBTC, Amount=$${amount}, Freq=${FREQUENCIES[freqIndex].label}, Nonce=${nonce}, ExpiresAt=${expiresAt}`;
         const signature = await signer.signMessage(message);
 
         const selectedFreq = FREQUENCIES[freqIndex];
@@ -431,7 +481,7 @@ export default function App() {
         const response = await fetch('/api/create-plan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message, signature, userAddress: normalizedAccount, planData })
+            body: JSON.stringify({ message, signature, userAddress: normalizedAccount, planData, expiresAt, nonce })
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Failed to create plan');
@@ -453,7 +503,10 @@ export default function App() {
     setIsLoading(true);
     
     try {
-      const message = `Authorize Cancellation of Plan ID: ${jobId}`;
+      const now = Date.now();
+      const expiresAt = now + 5 * 60 * 1000;
+      const nonce = crypto.randomUUID ? crypto.randomUUID() : `${now}-${Math.random()}`;
+      const message = `Authorize Cancellation of Plan ID: ${jobId}, Nonce=${nonce}, ExpiresAt=${expiresAt}`;
       const signature = await signer.signMessage(message);
 
       setDeletedIds(prev => [...prev, jobId]);
@@ -469,7 +522,9 @@ export default function App() {
               message,
               signature,
               userAddress: address.toLowerCase(),
-              jobId
+              jobId,
+              expiresAt,
+              nonce
           })
       });
 
@@ -496,6 +551,9 @@ export default function App() {
           <div>
             <h1 className="text-base font-extrabold text-slate-900 leading-tight">Base piggy bank</h1>
             {/* 连接状态现在由 RainbowKit 按钮处理 */}
+            {baseContext && (
+              <p className="text-[10px] font-semibold text-blue-600">Base Mini App Context Detected</p>
+            )}
           </div>
         </div>
         
@@ -511,6 +569,18 @@ export default function App() {
       </header>
 
       <main className="flex-1 flex flex-col min-h-0 bg-white">
+        {chainId && chainId !== 8453 && (
+          <div className="bg-amber-50 text-amber-800 text-xs font-semibold px-4 py-2 flex items-center justify-between border-b border-amber-100">
+            <span>Switch to Base Mainnet to continue.</span>
+            <button
+              onClick={() => switchChain?.({ chainId: 8453 })}
+              disabled={isSwitchingChain}
+              className="px-2 py-1 rounded-md bg-amber-200 text-amber-900 text-[11px] font-bold hover:bg-amber-300 disabled:opacity-50"
+            >
+              {isSwitchingChain ? 'Switching...' : 'Switch'}
+            </button>
+          </div>
+        )}
         {activeTab === 'strategy' && (
           <div className="flex flex-col h-full">
             <div className="flex-1 bg-slate-50 border-b border-slate-200 flex flex-col relative min-h-0">
@@ -548,6 +618,7 @@ export default function App() {
               <div>
                 <label className="flex justify-between text-xs font-bold text-slate-700 mb-1"><span>Target Goal</span><span className="text-slate-500 font-medium">cbBTC</span></label>
                 <div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">🎯</span><input type="number" value={targetGoal} step="0.01" placeholder="Set a visual goal" onChange={(e) => setTargetGoal(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-9 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" /></div>
+                <p className="text-[10px] text-slate-400 mt-2 px-2 font-medium text-center">This goal is for preview only and does not affect your DCA plan.</p>
               </div>
               <div>
                 <label className="flex justify-between text-xs font-bold text-slate-700 mb-1"><span>Amount per Trade</span><span className="text-slate-500 font-medium">USDC</span></label>

@@ -8,6 +8,42 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const nonceCache = new Map<string, number>();
+
+async function checkAndStoreNonce(nonce: string, userAddress: string, expiresAt: number) {
+  const cached = nonceCache.get(nonce);
+  if (cached && Date.now() < cached) return false;
+  nonceCache.set(nonce, expiresAt);
+
+  try {
+    const { data: existing } = await supabaseAdmin
+      .from('nonce_store')
+      .select('nonce, expires_at')
+      .eq('nonce', nonce)
+      .maybeSingle();
+
+    if (existing && new Date(existing.expires_at).getTime() > Date.now()) {
+      return false;
+    }
+
+    if (existing) {
+      await supabaseAdmin.from('nonce_store').delete().eq('nonce', nonce);
+    }
+
+    const { error: upsertError } = await supabaseAdmin.from('nonce_store').upsert({
+      nonce,
+      user_address: userAddress.toLowerCase(),
+      expires_at: new Date(expiresAt).toISOString(),
+      created_at: new Date().toISOString(),
+    });
+    if (upsertError) throw upsertError;
+  } catch (err) {
+    console.warn('Nonce store check failed, falling back to in-memory only', err);
+  }
+
+  return true;
+}
+
 // 创建 Base 链客户端 (viem)
 const publicClient = createPublicClient({
   chain: base,
@@ -16,12 +52,21 @@ const publicClient = createPublicClient({
 
 export async function POST(req: Request) {
   try {
-    const { message, signature, userAddress, jobId } = await req.json();
+    const { message, signature, userAddress, jobId, expiresAt, nonce } = await req.json();
 
     console.log(`[Cancel API] Checking Job: ${jobId} for User: ${userAddress}`);
 
-    if (!message || !signature || !userAddress || !jobId) {
+    if (!message || !signature || !userAddress || !jobId || !expiresAt || !nonce) {
         return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
+    }
+
+    if (Date.now() > Number(expiresAt)) {
+      return NextResponse.json({ error: 'Request expired' }, { status: 400 });
+    }
+
+    const nonceOk = await checkAndStoreNonce(String(nonce), userAddress, Number(expiresAt));
+    if (!nonceOk) {
+      return NextResponse.json({ error: 'Nonce already used' }, { status: 400 });
     }
 
     // =================================================================
