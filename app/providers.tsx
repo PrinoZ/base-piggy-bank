@@ -17,9 +17,17 @@ import '@rainbow-me/rainbowkit/styles.css';
 
 const { wallets } = getDefaultWallets();
 
+// WalletConnect / Reown Project ID (public)
+// Prefer env in production, but keep a fallback to avoid breaking embeds/preview environments.
+const wcProjectId = process.env.NEXT_PUBLIC_WC_PROJECT_ID || '217245ec2cae6778a51d6168f3e098ea';
+
+// IMPORTANT:
+// If WalletConnect/Reown blocks the origin (403 allowlist), it can break the embedded Base.dev/Base App experience.
+// Fix via Reown Cloud Domain allowlist (not code).
+
 const config = getDefaultConfig({
   appName: 'Base Piggy Bank',
-  projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID || '217245ec2cae6778a51d6168f3e098ea',
+  projectId: wcProjectId || '217245ec2cae6778a51d6168f3e098ea',
   wallets: [
     ...wallets,
     {
