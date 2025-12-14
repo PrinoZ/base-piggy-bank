@@ -301,6 +301,8 @@ export default function App() {
   const [isMounted, setIsMounted] = useState(false); 
   const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
   const [userRankData, setUserRankData] = useState<any>(null);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
 
   const [amount, setAmount] = useState<number | ''>(100);
   const [freqIndex, setFreqIndex] = useState(0); 
@@ -378,7 +380,16 @@ export default function App() {
 
   const fetchLeaderboard = async () => {
       try {
-          // 获取�?5名用于显�?          const { data, error } = await supabase.from('leaderboard').select('*').order('total_invested', { ascending: false }).limit(15);
+          setLeaderboardLoading(true);
+          setLeaderboardError(null);
+
+          // 获取前15名用于显示（优先读物理表，避免视图/权限不一致导致前端一直“Loading”）
+          const { data, error } = await supabase
+            .from('leaderboard_table')
+            .select('user_address,total_invested,total_trades,last_trade_at')
+            .order('total_invested', { ascending: false })
+            .limit(15);
+
           if (error) throw error;
           if (data) {
               setLeaderboardData(data); 
@@ -392,8 +403,8 @@ export default function App() {
                   } else {
                       // 用户不在�?5名，查询实际排名
                       const { data: allData, error: rankError } = await supabase
-                          .from('leaderboard')
-                          .select('user_address, total_invested')
+                          .from('leaderboard_table')
+                          .select('user_address,total_invested')
                           .order('total_invested', { ascending: false });
                       
                       if (!rankError && allData) {
@@ -412,7 +423,13 @@ export default function App() {
                   }
               }
           }
-      } catch (err) { console.error("Fetch leaderboard error:", err); }
+      } catch (err: any) {
+          console.error("Fetch leaderboard error:", err);
+          setLeaderboardData([]);
+          setLeaderboardError(err?.message || 'Failed to load rankings');
+      } finally {
+          setLeaderboardLoading(false);
+      }
   };
 
   const fetchActiveJobs = async (userAddr = address) => {
@@ -677,7 +694,21 @@ export default function App() {
                 </div>
               </div>
               <div className="space-y-2">
-                {leaderboardData.length > 0 ? (
+                {leaderboardLoading ? (
+                  <div className="text-center text-slate-400 text-sm py-10">Loading Rankings...</div>
+                ) : leaderboardError ? (
+                  <div className="text-center text-red-500 text-sm py-10">
+                    {leaderboardError}
+                    <div className="mt-3">
+                      <button
+                        onClick={fetchLeaderboard}
+                        className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  </div>
+                ) : leaderboardData.length > 0 ? (
                     leaderboardData.map((user: any, index: number) => (
                       <div key={user.user_address} className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between shadow-sm">
                         <div className="flex items-center gap-3">
@@ -687,7 +718,9 @@ export default function App() {
                         <div className="text-right"><div className="font-bold text-slate-900 text-sm font-mono">${user.total_invested} <span className="text-[10px] text-slate-400 font-sans">USDC</span></div></div>
                       </div>
                     ))
-                ) : <div className="text-center text-slate-400 text-sm py-10">Loading Rankings...</div>}
+                ) : (
+                  <div className="text-center text-slate-400 text-sm py-10">No rankings yet.</div>
+                )}
               </div>
             </div>
           </div>
