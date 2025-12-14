@@ -318,6 +318,17 @@ export default function App() {
   
   useEffect(() => { setIsMounted(true); }, []);
 
+  // Base Mini App host handshake: tells Base the app is ready to display (otherwise you may only see the splash screen)
+  useEffect(() => {
+    try {
+      // @ts-ignore
+      const baseActions = window?.base?.actions;
+      if (baseActions?.ready) baseActions.ready();
+    } catch (e) {
+      // no-op: not in Base host
+    }
+  }, []);
+
   // Base Mini App / Frame context: best-effort parse from URL search or window
   useEffect(() => {
     try {
