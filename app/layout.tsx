@@ -55,6 +55,22 @@ export const metadata: Metadata = {
   // 4. ✅ Farcaster Frame (Base Mini App 核心交互配置)
   other: {
     "base:app_id": "693aa07d8a7c4e55fec73dfe",
+    // ✅ Base Mini App embed preview metadata (required on homeUrl)
+    // Docs: https://docs.base.org/mini-apps/core-concepts/embeds-and-previews
+    "fc:miniapp": JSON.stringify({
+      version: "next",
+      imageUrl: `${APP_URL}/og-image.png`,
+      button: {
+        title: "Open App",
+        action: {
+          type: "launch_frame",
+          url: APP_URL,
+          name: "Base Piggy Bank",
+          splashImageUrl: `${APP_URL}/icon-512.png`,
+          splashBackgroundColor: "#2563EB",
+        },
+      },
+    }),
     "fc:frame": "vNext",
     "fc:frame:image": `${APP_URL}/og-image.png`,
     "fc:frame:image:aspect_ratio": "1.91:1",
