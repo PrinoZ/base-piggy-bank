@@ -9,6 +9,7 @@ import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, 
 
 // === �?关键修改 1: 引入 RainbowKit �?Wagmi ===
 import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useConnectModal, useChainModal } from '@rainbow-me/rainbowkit';
 import { useAccount, useReadContract, useChainId, useSwitchChain } from 'wagmi';
 import { parseAbi } from 'viem'; // 用于处理 ABI 兼容
 import { useEthersSigner } from '../lib/ethers-adapter';
@@ -270,6 +271,8 @@ export default function App() {
   const { address, isConnected } = useAccount(); // 替代 const [account, setAccount]
   const chainId = useChainId();
   const { switchChain, isPending: isSwitchingChain } = useSwitchChain();
+  const { openConnectModal } = useConnectModal();
+  const { openChainModal } = useChainModal();
   
   // 使用我们自定义的 adapter 获取 Ethers Signer (用于 write 操作)
   const signer = useEthersSigner(); 
@@ -303,6 +306,8 @@ export default function App() {
   const [userRankData, setUserRankData] = useState<any>(null);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
+  const [dcaError, setDcaError] = useState<string | null>(null);
+  const [dcaStatus, setDcaStatus] = useState<string | null>(null);
 
   const [amount, setAmount] = useState<number | ''>(100);
   const [freqIndex, setFreqIndex] = useState(0); 
@@ -455,9 +460,25 @@ export default function App() {
   // === 移除: switchChain �?connectWallet (RainbowKit 自动处理) ===
 
   const handleStartDCA = async () => {
-    if (!isConnected || !address || !signer) {
-        // 触发 RainbowKit 的连接弹�?(通过隐藏按钮的点击或其他方式，但这里简单起见，提示用户)
-        alert("Please connect your wallet first.");
+    setDcaError(null);
+    setDcaStatus(null);
+
+    if (!isConnected || !address) {
+        setDcaError('Please connect your wallet first.');
+        // 尝试直接打开 RainbowKit 连接弹窗（alert 在某些 WebView 里不会显示）
+        openConnectModal?.();
+        return;
+    }
+
+    if (!signer) {
+        setDcaError('Wallet is connected but signer is not ready. Please reconnect your wallet and try again.');
+        return;
+    }
+
+    // 可选：链锁定到 Base Mainnet
+    if (chainId && chainId !== 8453) {
+        setDcaError('Please switch to Base Mainnet (8453) to start DCA.');
+        openChainModal?.();
         return;
     }
 
@@ -465,7 +486,12 @@ export default function App() {
     const normalizedAccount = address.toLowerCase();
 
     try {
-        if (!amount || Number(amount) <= 0) { alert("Please enter a valid Amount."); setIsLoading(false); return; }
+        if (!amount || Number(amount) <= 0) {
+            setDcaError('Please enter a valid amount.');
+            return;
+        }
+
+        setDcaStatus('Checking allowance…');
       const now = Date.now();
       const expiresAt = now + 5 * 60 * 1000; // 5 分钟有效
       const nonce = crypto.randomUUID ? crypto.randomUUID() : `${now}-${Math.random()}`;
@@ -477,11 +503,13 @@ export default function App() {
         const allowance = await usdcContract.allowance(normalizedAccount, DCA_CONTRACT_ADDRESS);
         
         if (allowance < requiredAmount) {
+            setDcaStatus('Approving USDC…');
             const approveTx = await usdcContract.approve(DCA_CONTRACT_ADDRESS, ethers.MaxUint256);
             await approveTx.wait();
         }
 
         const message = `Confirm DCA Plan Creation: Token=USDC->cbBTC, Amount=$${amount}, Freq=${FREQUENCIES[freqIndex].label}, Nonce=${nonce}, ExpiresAt=${expiresAt}`;
+        setDcaStatus('Signing…');
         const signature = await signer.signMessage(message);
 
         const selectedFreq = FREQUENCIES[freqIndex];
@@ -493,6 +521,7 @@ export default function App() {
             next_run_time: new Date().toISOString()
         };
 
+        setDcaStatus('Creating plan…');
         const response = await fetch('/api/create-plan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -501,7 +530,7 @@ export default function App() {
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Failed to create plan');
 
-        alert(`🎉 Plan Created! Check active plans.`);
+        setDcaStatus('Plan created!');
         if (result.data) {
              setActiveJobs(prev => [result.data, ...prev]);
              setRefreshTrigger(prev => prev + 1); 
@@ -509,8 +538,15 @@ export default function App() {
         setActiveTab('assets'); 
     } catch (err: any) {
         console.error("DCA Error:", err);
-        if (err.code !== "ACTION_REJECTED" && err.info?.error?.code !== 4001) alert("Error: " + (err.shortMessage || err.message));
-    } finally { setIsLoading(false); }
+        // 用户拒绝签名/交易：给一个温和提示
+        if (err?.code === "ACTION_REJECTED" || err?.info?.error?.code === 4001) {
+            setDcaError('Cancelled by user.');
+        } else {
+            setDcaError(err?.shortMessage || err?.message || 'Failed to start DCA.');
+        }
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   const handleCancelPlan = async (jobId: any) => {
@@ -650,6 +686,11 @@ export default function App() {
                 <button className={`w-full text-white font-bold text-lg py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 active:bg-blue-700 active:scale-[0.98] shadow-blue-600/20'}`} onClick={handleStartDCA} disabled={isLoading}>
                   {isLoading ? 'Processing...' : (!isConnected ? 'Connect Wallet to Start' : (<>Start DCA <ChevronRight size={20} /></>))}
                 </button>
+                {(dcaError || dcaStatus) && (
+                  <div className={`mt-2 text-[10px] px-2 font-medium text-center ${dcaError ? 'text-red-500' : 'text-slate-500'}`}>
+                    {dcaError || dcaStatus}
+                  </div>
+                )}
                 <p className="text-[10px] text-slate-400 mt-2 px-2 font-medium text-center">This is a non-custodial protocol. We don't hold any user funds.</p>
               </div>
             </div>
