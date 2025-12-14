@@ -59,7 +59,8 @@ export const metadata: Metadata = {
     // Docs: https://docs.base.org/mini-apps/core-concepts/embeds-and-previews
     "fc:miniapp": JSON.stringify({
       version: "next",
-      imageUrl: `${APP_URL}/og-image.png`,
+      // Must be 3:2 for Base mini app embed preview
+      imageUrl: `${APP_URL}/miniapp-preview.png`,
       button: {
         title: "Open App",
         action: {
