@@ -684,7 +684,7 @@ export default function App() {
           </div>
         )}
         {activeTab === 'strategy' && (
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col h-full overflow-y-auto">
             <div className="flex-1 bg-slate-50 border-b border-slate-200 flex flex-col relative min-h-0">
               <div className="px-5 pt-4 pb-2 flex-none">
                 <div className="w-full">
@@ -699,11 +699,12 @@ export default function App() {
                     </div>
                 </div>
               </div>
-              <div className="flex-1 w-full min-h-0 flex flex-col px-1 py-2">
-                <div className="flex-1 w-full min-h-[180px]"> 
+              <div className="flex-1 w-full min-h-0 flex flex-col px-4 py-2">
+                {/* Chart uses a viewport-based height to avoid overlap when mobile browser UI expands/collapses */}
+                <div className="w-full h-[28vh] min-h-[160px] max-h-[240px]"> 
                     {isMounted ? (
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={calculation.data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                            <AreaChart data={calculation.data} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                             <defs><linearGradient id="colorCoins" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#2563EB" stopOpacity={0.25}/><stop offset="95%" stopColor="#2563EB" stopOpacity={0}/></linearGradient></defs>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                             <XAxis dataKey="dateLabel" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" minTickGap={30} />
