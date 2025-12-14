@@ -325,17 +325,27 @@ export default function App() {
     const tryReady = async () => {
       if (done) return;
       try {
+        // 1) Try Base host API (if present)
         // Host APIs can arrive asynchronously; retry briefly.
         // @ts-ignore
-        const readyFn =
-          window?.base?.actions?.ready ||
-          // @ts-ignore
-          window?.base?.miniapp?.actions?.ready;
-
-        if (typeof readyFn === 'function') {
+        const baseReadyFn = window?.base?.actions?.ready || window?.base?.miniapp?.actions?.ready;
+        if (typeof baseReadyFn === 'function') {
           done = true;
-          await Promise.resolve(readyFn());
+          await Promise.resolve(baseReadyFn());
           setBaseReadySent(true);
+          return;
+        }
+
+        // 2) Try Farcaster Frame SDK (Base Mini Apps use the same embed/launch infrastructure)
+        // Dynamic import to avoid SSR issues.
+        const mod: any = await import('@farcaster/frame-sdk');
+        const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
+        const sdkReady = sdk?.actions?.ready;
+        if (typeof sdkReady === 'function') {
+          done = true;
+          await Promise.resolve(sdkReady());
+          setBaseReadySent(true);
+          return;
         }
       } catch {
         // ignore and keep retrying until timeout
