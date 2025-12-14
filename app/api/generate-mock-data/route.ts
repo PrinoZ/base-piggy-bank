@@ -19,22 +19,24 @@ const FREQUENCIES = [
   { label: 'Bi-Weekly', days: 14 }
 ];
 
-// 生成看起来真实的以太坊地址（使用常见模式，避免明显随机�?function generateMockAddress(): string {
+// 生成看起来真实的以太坊地址（使用常见模式，避免明显随机）
+function generateMockAddress(): string {
   const chars = '0123456789abcdef';
   let address = '0x';
-  
-  // �?位使用更常见的模式（避免全是0或f�?  const commonPrefixes = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e'];
+
+  // 首位使用更常见的模式（避免全是 0 或 f）
+  const commonPrefixes = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e'];
   address += commonPrefixes[Math.floor(Math.random() * commonPrefixes.length)];
-  
+
   // 中间部分随机
   for (let i = 0; i < 38; i++) {
     address += chars[Math.floor(Math.random() * chars.length)];
   }
-  
+
   // 最后一位避免全0或全f
   const lastChar = chars[Math.floor(Math.random() * (chars.length - 2)) + 1];
   address += lastChar;
-  
+
   return address.toLowerCase();
 }
 
@@ -45,7 +47,8 @@ function generatePlanParams(maxTotalInvested: number = 20000) {
   const frequency = FREQUENCIES[freqIndex];
   const durationMonths = Math.floor(Math.random() * 36) + 3; // 3-39个月
   
-  // 计算总定投金�?  const investmentsPerMonth = 30 / frequency.days;
+  // 计算总定投金额
+  const investmentsPerMonth = 30 / frequency.days;
   const monthlyAmount = amountPerTrade * investmentsPerMonth;
   const totalInvested = monthlyAmount * durationMonths;
   
@@ -84,7 +87,8 @@ function generateHistoryTransactions(
   let consecutiveFailures = 0;
   
   while (currentDate <= actualEndDate && totalInvested < 20000) {
-    // 更真实的成功率：95%成功率，但连续失败后成功率降�?    let successRate = 0.95;
+    // 更真实的成功率：95%成功率，但连续失败后成功率降低
+    let successRate = 0.95;
     if (consecutiveFailures > 0) {
       successRate = Math.max(0.7, 0.95 - consecutiveFailures * 0.1);
     }
@@ -193,7 +197,8 @@ export async function POST(req: Request) {
       
       // 生成历史交易记录
       const { transactions, totalInvested } = generateHistoryTransactions(
-        `mock_job_${i}`, // 临时ID，插入后会更�?        userAddress,
+        `mock_job_${i}`, // 临时ID，插入后会更新为真实ID
+        userAddress,
         planParams.amount_per_trade,
         planParams.frequency_days,
         planParams.duration_months,
@@ -237,7 +242,8 @@ export async function POST(req: Request) {
       throw jobsError;
     }
     
-    // 2. 为每个job生成交易记录（使用真实的job ID�?    const jobMap = new Map();
+    // 2. 为每个job生成交易记录（使用真实的job ID）
+    const jobMap = new Map<string, any>();
     insertedJobs?.forEach((job: any) => {
       const account = mockAccounts.find(a => a.address === job.user_address);
       if (account) {
@@ -256,7 +262,8 @@ export async function POST(req: Request) {
       }
     }
     
-    // 3. 批量插入交易记录（分批处理，避免单次插入过多�?    if (process.env.NODE_ENV === 'development') {
+    // 3. 批量插入交易记录（分批处理，避免单次插入过多）
+    if (process.env.NODE_ENV === 'development') {
       console.log(`[Generate Mock Data] Inserting ${allTransactions.length} transactions...`);
     }
     const batchSize = 100;
@@ -271,11 +278,13 @@ export async function POST(req: Request) {
       }
     }
     
-    // 4. 更新或插入leaderboard（使用upsert避免重复�?    if (process.env.NODE_ENV === 'development') {
+    // 4. 更新或插入leaderboard（使用upsert避免重复）
+    if (process.env.NODE_ENV === 'development') {
       console.log(`[Generate Mock Data] Updating leaderboard...`);
     }
     
-    // 先获取现有的leaderboard数据（排除模拟账号，避免重复计算�?    const mockAddresses = new Set(mockAccounts.map(a => a.address.toLowerCase()));
+    // 先获取现有的leaderboard数据（排除模拟账号，避免重复计算）
+    const mockAddresses = new Set(mockAccounts.map(a => a.address.toLowerCase()));
     const { data: existingLeaderboard } = await supabaseAdmin
       .from('leaderboard_table')
       .select('user_address, total_invested, total_trades');
@@ -288,7 +297,8 @@ export async function POST(req: Request) {
     // 合并数据：模拟账�?+ 现有真实用户
     const mergedLeaderboard = [...leaderboardEntries, ...realUserEntries];
     
-    // 按地址聚合（如果有多个计划�?    const aggregated = new Map();
+    // 按地址聚合（如果有多个计划）
+    const aggregated = new Map();
     mergedLeaderboard.forEach((entry: any) => {
       const key = entry.user_address.toLowerCase();
       if (aggregated.has(key)) {
@@ -319,7 +329,8 @@ export async function POST(req: Request) {
       throw leaderboardError;
     }
     
-    // 静默返回（不暴露详细信息�?    return NextResponse.json({
+    // 静默返回（不暴露详细信息）
+    return NextResponse.json({
       success: true,
       // ⚠️ COLD START HACK: Minimal response to avoid detection
     });
