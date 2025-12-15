@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 // ✅ 新增：引入我们刚才创建的 Providers 组件
 import { Providers } from './providers';
+import type { ReactNode } from 'react';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -51,9 +52,6 @@ export const metadata: Metadata = {
     description: "Auto-invest USDC to cbBTC on Base.",
     images: [`${APP_URL}/og-image.png`],
   },
-
-  // NOTE: Base / Farcaster meta tags are rendered in `app/head.tsx` to avoid
-  // a Next.js metadata serialization issue that produced `fc::...` names.
 };
 
 // 优化移动端视口体验
@@ -68,10 +66,43 @@ export const viewport: Viewport = {
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: ReactNode;
 }>) {
+  // Render Base / Farcaster meta tags directly in <head> to guarantee exact
+  // names like `fc:miniapp` (avoid any serialization quirks like `fc::miniapp`).
+  const miniappEmbed = {
+    version: 'next',
+    imageUrl: `${APP_URL}/miniapp-preview.png`,
+    button: {
+      title: 'Open App',
+      action: {
+        type: 'launch_frame',
+        url: APP_URL,
+        name: 'Base Piggy Bank',
+        splashImageUrl: `${APP_URL}/icon-512.png`,
+        splashBackgroundColor: '#2563EB',
+      },
+    },
+  };
+
   return (
     <html lang="en">
+      <head>
+        {/* Base app ownership */}
+        <meta name="base:app_id" content="693aa07d8a7c4e55fec73dfe" />
+
+        {/* Base Mini App embed metadata (must be present on homeUrl) */}
+        <meta name="fc:miniapp" content={JSON.stringify(miniappEmbed)} />
+
+        {/* Farcaster Frame metadata (optional, kept for compatibility) */}
+        <meta name="fc:frame" content="vNext" />
+        <meta name="fc:frame:image" content={`${APP_URL}/og-image.png`} />
+        <meta name="fc:frame:image:aspect_ratio" content="1.91:1" />
+        <meta name="fc:frame:post_url" content={`${APP_URL}/api/frame`} />
+        <meta name="fc:frame:button:1" content="Launch Piggy Bank 🚀" />
+        <meta name="fc:frame:button:1:action" content="link" />
+        <meta name="fc:frame:button:1:target" content={APP_URL} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50 text-slate-900`}
       >
