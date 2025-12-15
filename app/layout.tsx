@@ -52,34 +52,8 @@ export const metadata: Metadata = {
     images: [`${APP_URL}/og-image.png`],
   },
 
-  // 4. ✅ Farcaster Frame (Base Mini App 核心交互配置)
-  other: {
-    "base:app_id": "693aa07d8a7c4e55fec73dfe",
-    // ✅ Base Mini App embed preview metadata (required on homeUrl)
-    // Docs: https://docs.base.org/mini-apps/core-concepts/embeds-and-previews
-    "fc:miniapp": JSON.stringify({
-      version: "next",
-      // Must be 3:2 for Base mini app embed preview
-      imageUrl: `${APP_URL}/miniapp-preview.png`,
-      button: {
-        title: "Open App",
-        action: {
-          type: "launch_frame",
-          url: APP_URL,
-          name: "Base Piggy Bank",
-          splashImageUrl: `${APP_URL}/icon-512.png`,
-          splashBackgroundColor: "#2563EB",
-        },
-      },
-    }),
-    "fc:frame": "vNext",
-    "fc:frame:image": `${APP_URL}/og-image.png`,
-    "fc:frame:image:aspect_ratio": "1.91:1",
-    "fc:frame:post_url": `${APP_URL}/api/frame`, 
-    "fc:frame:button:1": "Launch Piggy Bank 🚀",
-    "fc:frame:button:1:action": "link", 
-    "fc:frame:button:1:target": APP_URL, 
-  },
+  // NOTE: Base / Farcaster meta tags are rendered in `app/head.tsx` to avoid
+  // a Next.js metadata serialization issue that produced `fc::...` names.
 };
 
 // 优化移动端视口体验
