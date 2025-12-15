@@ -21,7 +21,10 @@
     "tags": ["finance", "defi", "dca", "bitcoin", "base"],
     "heroImageUrl": "https://base-piggy-bank.vercel.app/miniapp-preview.png",
     "screenshotUrls": [
-      "https://base-piggy-bank.vercel.app/miniapp-preview.png"
+      "https://base-piggy-bank.vercel.app/screenshotsshot-1.png",
+      "https://base-piggy-bank.vercel.app/screenshotsshot-2.png",
+      "https://base-piggy-bank.vercel.app/screenshotsshot-3.png",
+      "https://base-piggy-bank.vercel.app/screenshotsshot-4.png"
     ],
     "ogTitle": "Base Piggy Bank",
     "ogDescription": "Auto-invest USDC to cbBTC on Base. Non-custodial DCA.",
