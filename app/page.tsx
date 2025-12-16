@@ -806,15 +806,68 @@ export default function App() {
           </div>
         </div>
         
-        {/* === RainbowKit 按钮 === */}
-        <ConnectButton 
-            chainStatus="icon" 
-            showBalance={false}
-            accountStatus={{
-                smallScreen: 'avatar',
-                largeScreen: 'full',
-            }} 
-        />
+        {/* === Custom account pill (show Base avatar/username when available) === */}
+        <ConnectButton.Custom>
+          {({
+            account,
+            chain,
+            openConnectModal,
+            openAccountModal,
+            openChainModal,
+            mounted,
+          }) => {
+            const ready = mounted;
+            const connected = ready && account && chain;
+
+            const baseName =
+              baseUser?.displayName ||
+              (baseUser?.username ? `@${baseUser.username}` : undefined);
+            const baseAvatar = baseUser?.pfpUrl || null;
+
+            const label = baseName || (account ? account.displayName : 'Connect');
+
+            return (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!connected) openConnectModal?.();
+                  else openAccountModal?.();
+                }}
+                className="flex items-center gap-2 px-3 py-2 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors text-slate-900"
+                style={{ opacity: ready ? 1 : 0, pointerEvents: ready ? 'auto' : 'none' }}
+              >
+                <div className="w-6 h-6 rounded-full bg-white border border-slate-200 overflow-hidden flex items-center justify-center">
+                  {baseAvatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={baseAvatar} alt="avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-[11px] font-black text-slate-700">
+                      {(baseName || account?.displayName || 'BPB').slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+
+                <span className="text-xs font-extrabold max-w-[140px] truncate">
+                  {label}
+                </span>
+
+                {/* Optional: chain picker indicator */}
+                {connected && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openChainModal?.();
+                    }}
+                    className="text-[10px] font-bold text-slate-500 hover:text-slate-700"
+                    title="Network"
+                  >
+                    {chain?.name === 'Base' ? 'Base' : chain?.name}
+                  </span>
+                )}
+              </button>
+            );
+          }}
+        </ConnectButton.Custom>
       </header>
 
       <main className="flex-1 flex flex-col min-h-0 bg-white">
