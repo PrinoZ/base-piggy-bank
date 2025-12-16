@@ -10,7 +10,7 @@
     "homeUrl": "https://base-piggy-bank.vercel.app",
     "canonicalDomain": "base-piggy-bank.vercel.app",
     "requiredChains": ["eip155:8453"],
-    "requiredCapabilities": ["actions.ready"],
+    "requiredCapabilities": ["actions.ready", "actions.signIn"],
     "iconUrl": "https://base-piggy-bank.vercel.app/icon-512.png",
     "splashImageUrl": "https://base-piggy-bank.vercel.app/icon-512.png",
     "splashBackgroundColor": "#2563EB",

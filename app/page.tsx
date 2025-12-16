@@ -125,8 +125,9 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
     const handleShare = async (e: any) => {
         e.stopPropagation(); 
         const text = `I'm auto-investing cbBTC via @BasePiggyBank! 🐷\n\nAccumulated: ${realStats.btc.toFixed(4)} BTC\nInvested: $${realStats.usd}\n\nStart your journey on Base! 🚀`;
-        // 引导到具备 OG/Frame 预览的页面（主页 /embed），让社交平台抓取 og-image
-        const url = `${APP_URL || window.location.origin}/`;
+        // Share a dedicated URL that renders Frame-only metadata so Base App shows a
+        // controllable Frame card/button (instead of the Mini App unified CTA).
+        const url = `${APP_URL || window.location.origin}/share`;
         try {
             if (navigator.share) await navigator.share({ title: 'Base Piggy Bank', text: text, url });
             else throw new Error("Share API not supported");
@@ -316,6 +317,14 @@ export default function App() {
   const [frameContext, setFrameContext] = useState<any>(null);
   const [baseContext, setBaseContext] = useState<any>(null);
   const [baseReadySent, setBaseReadySent] = useState(false);
+  const [isBaseHost, setIsBaseHost] = useState(false);
+  const [baseUser, setBaseUser] = useState<{
+    fid?: number;
+    username?: string;
+    displayName?: string;
+    pfpUrl?: string;
+  } | null>(null);
+  const [baseSignInLoading, setBaseSignInLoading] = useState(false);
   
   useEffect(() => { setIsMounted(true); }, []);
 
@@ -382,6 +391,126 @@ export default function App() {
       console.warn('Context parse failed', err);
     }
   }, []);
+
+  // Base identity: try to read user info from Base host context or Frame SDK context.
+  useEffect(() => {
+    let done = false;
+
+    const extractUser = (ctx: any) => {
+      if (!ctx) return null;
+      const u =
+        ctx?.user ||
+        ctx?.farcaster?.user ||
+        ctx?.frameContext?.user ||
+        ctx?.client?.user ||
+        ctx?.context?.user;
+      if (!u) return null;
+
+      const candidate = {
+        fid: typeof u?.fid === 'number' ? u.fid : undefined,
+        username: typeof u?.username === 'string' ? u.username : undefined,
+        displayName:
+          typeof u?.displayName === 'string'
+            ? u.displayName
+            : typeof u?.display_name === 'string'
+              ? u.display_name
+              : undefined,
+        pfpUrl:
+          typeof u?.pfpUrl === 'string'
+            ? u.pfpUrl
+            : typeof u?.pfp_url === 'string'
+              ? u.pfp_url
+              : undefined,
+      };
+
+      if (candidate.username || candidate.displayName || candidate.fid) return candidate;
+      return null;
+    };
+
+    const tryIdentity = async () => {
+      if (done) return;
+      try {
+        // Detect Base host quickly
+        // @ts-ignore
+        const hasBase = !!(window?.base || window?.base?.miniapp);
+        if (hasBase) setIsBaseHost(true);
+
+        // Prefer already-parsed baseContext
+        const fromState = extractUser(baseContext) || extractUser(frameContext);
+        if (fromState) {
+          setBaseUser(fromState);
+          done = true;
+          return;
+        }
+
+        // Pull from window.base.context if available
+        // @ts-ignore
+        const wbCtx = window?.base?.context || window?.base?.miniapp?.context;
+        if (wbCtx) {
+          setBaseContext(wbCtx);
+          const fromWin = extractUser(wbCtx);
+          if (fromWin) {
+            setBaseUser(fromWin);
+            done = true;
+            return;
+          }
+        }
+
+        // Pull from Frame SDK context (dynamic import; avoids SSR)
+        const mod: any = await import('@farcaster/frame-sdk');
+        const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
+        const sdkCtx =
+          typeof sdk?.context === 'function' ? await sdk.context() : sdk?.context;
+        if (sdkCtx) {
+          setIsBaseHost(true);
+          setBaseContext((prev: any) => prev || sdkCtx);
+          const fromSdk = extractUser(sdkCtx);
+          if (fromSdk) {
+            setBaseUser(fromSdk);
+            done = true;
+            return;
+          }
+        }
+      } catch {
+        // ignore and retry briefly
+      }
+    };
+
+    tryIdentity();
+    const interval = setInterval(tryIdentity, 300);
+    const timeout = setTimeout(() => {
+      done = true;
+      clearInterval(interval);
+    }, 8000);
+
+    return () => {
+      done = true;
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [baseContext, frameContext]);
+
+  const handleBaseSignIn = async () => {
+    if (baseSignInLoading) return;
+    setBaseSignInLoading(true);
+    try {
+      // @ts-ignore
+      const baseSignIn = window?.base?.actions?.signIn || window?.base?.miniapp?.actions?.signIn;
+      if (typeof baseSignIn === 'function') {
+        await Promise.resolve(baseSignIn());
+      } else {
+        const mod: any = await import('@farcaster/frame-sdk');
+        const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
+        const sdkSignIn = sdk?.actions?.signIn;
+        if (typeof sdkSignIn === 'function') await Promise.resolve(sdkSignIn());
+      }
+    } catch (e) {
+      // Silently ignore; host may not support sign-in in this context.
+      console.warn('Base sign-in failed/unavailable', e);
+    } finally {
+      setBaseSignInLoading(false);
+    }
+  };
 
   // 当连接状态变化时，自动刷新数据
   useEffect(() => {
@@ -651,10 +780,28 @@ export default function App() {
           <div>
             <h1 className="text-base font-extrabold text-slate-900 leading-tight">Base piggy bank</h1>
             {/* 连接状态现在由 RainbowKit 按钮处理 */}
-            {baseContext && (
-              <p className="text-[10px] font-semibold text-blue-600">
-                Base Mini App Context Detected{baseReadySent ? ' · Ready' : ' · Waiting…'}
-              </p>
+            {(isBaseHost || baseContext) && (
+              <div className="flex items-center gap-2">
+                <p className="text-[10px] font-semibold text-blue-600">
+                  {baseUser?.displayName
+                    ? `Base: ${baseUser.displayName}`
+                    : baseUser?.username
+                      ? `Base: @${baseUser.username}`
+                      : baseUser?.fid
+                        ? `Base: fid ${baseUser.fid}`
+                        : 'Base Host Detected'}
+                  {baseReadySent ? ' · Ready' : ' · Waiting…'}
+                </p>
+                {isBaseHost && !baseUser && (
+                  <button
+                    onClick={handleBaseSignIn}
+                    disabled={baseSignInLoading}
+                    className="text-[10px] font-bold text-slate-600 hover:text-slate-900 disabled:opacity-50"
+                  >
+                    {baseSignInLoading ? 'Signing…' : 'Sign in'}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
