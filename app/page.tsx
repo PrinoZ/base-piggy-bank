@@ -325,6 +325,38 @@ export default function App() {
     pfpUrl?: string;
   } | null>(null);
   const [baseSignInLoading, setBaseSignInLoading] = useState(false);
+
+  const extractBaseUser = (ctx: any) => {
+    if (!ctx) return null;
+    const u =
+      ctx?.user ||
+      ctx?.farcaster?.user ||
+      ctx?.farcaster?.context?.user ||
+      ctx?.frameContext?.user ||
+      ctx?.client?.user ||
+      ctx?.context?.user;
+    if (!u) return null;
+
+    const candidate = {
+      fid: typeof u?.fid === 'number' ? u.fid : undefined,
+      username: typeof u?.username === 'string' ? u.username : undefined,
+      displayName:
+        typeof u?.displayName === 'string'
+          ? u.displayName
+          : typeof u?.display_name === 'string'
+            ? u.display_name
+            : undefined,
+      pfpUrl:
+        typeof u?.pfpUrl === 'string'
+          ? u.pfpUrl
+          : typeof u?.pfp_url === 'string'
+            ? u.pfp_url
+            : undefined,
+    };
+
+    if (candidate.username || candidate.displayName || candidate.fid) return candidate;
+    return null;
+  };
   
   useEffect(() => { setIsMounted(true); }, []);
 
@@ -396,37 +428,6 @@ export default function App() {
   useEffect(() => {
     let done = false;
 
-    const extractUser = (ctx: any) => {
-      if (!ctx) return null;
-      const u =
-        ctx?.user ||
-        ctx?.farcaster?.user ||
-        ctx?.frameContext?.user ||
-        ctx?.client?.user ||
-        ctx?.context?.user;
-      if (!u) return null;
-
-      const candidate = {
-        fid: typeof u?.fid === 'number' ? u.fid : undefined,
-        username: typeof u?.username === 'string' ? u.username : undefined,
-        displayName:
-          typeof u?.displayName === 'string'
-            ? u.displayName
-            : typeof u?.display_name === 'string'
-              ? u.display_name
-              : undefined,
-        pfpUrl:
-          typeof u?.pfpUrl === 'string'
-            ? u.pfpUrl
-            : typeof u?.pfp_url === 'string'
-              ? u.pfp_url
-              : undefined,
-      };
-
-      if (candidate.username || candidate.displayName || candidate.fid) return candidate;
-      return null;
-    };
-
     const tryIdentity = async () => {
       if (done) return;
       try {
@@ -436,7 +437,7 @@ export default function App() {
         if (hasBase) setIsBaseHost(true);
 
         // Prefer already-parsed baseContext
-        const fromState = extractUser(baseContext) || extractUser(frameContext);
+        const fromState = extractBaseUser(baseContext) || extractBaseUser(frameContext);
         if (fromState) {
           setBaseUser(fromState);
           done = true;
@@ -448,7 +449,7 @@ export default function App() {
         const wbCtx = window?.base?.context || window?.base?.miniapp?.context;
         if (wbCtx) {
           setBaseContext(wbCtx);
-          const fromWin = extractUser(wbCtx);
+          const fromWin = extractBaseUser(wbCtx);
           if (fromWin) {
             setBaseUser(fromWin);
             done = true;
@@ -459,12 +460,17 @@ export default function App() {
         // Pull from Frame SDK context (dynamic import; avoids SSR)
         const mod: any = await import('@farcaster/frame-sdk');
         const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
+        // Some hosts require ready() before context is populated
+        const sdkReady = sdk?.actions?.ready;
+        if (typeof sdkReady === 'function') {
+          try { await Promise.resolve(sdkReady()); } catch {}
+        }
         const sdkCtx =
           typeof sdk?.context === 'function' ? await sdk.context() : sdk?.context;
         if (sdkCtx) {
           setIsBaseHost(true);
           setBaseContext((prev: any) => prev || sdkCtx);
-          const fromSdk = extractUser(sdkCtx);
+          const fromSdk = extractBaseUser(sdkCtx);
           if (fromSdk) {
             setBaseUser(fromSdk);
             done = true;
@@ -503,6 +509,27 @@ export default function App() {
         const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
         const sdkSignIn = sdk?.actions?.signIn;
         if (typeof sdkSignIn === 'function') await Promise.resolve(sdkSignIn());
+      }
+
+      // After sign-in, re-pull context and extract user immediately.
+      // @ts-ignore
+      const wbCtx = window?.base?.context || window?.base?.miniapp?.context;
+      if (wbCtx) {
+        setIsBaseHost(true);
+        setBaseContext(wbCtx);
+        const u = extractBaseUser(wbCtx);
+        if (u) setBaseUser(u);
+      } else {
+        const mod: any = await import('@farcaster/frame-sdk');
+        const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
+        const sdkCtx =
+          typeof sdk?.context === 'function' ? await sdk.context() : sdk?.context;
+        if (sdkCtx) {
+          setIsBaseHost(true);
+          setBaseContext((prev: any) => prev || sdkCtx);
+          const u = extractBaseUser(sdkCtx);
+          if (u) setBaseUser(u);
+        }
       }
     } catch (e) {
       // Silently ignore; host may not support sign-in in this context.
@@ -827,33 +854,54 @@ export default function App() {
             const label = baseName || (account ? account.displayName : 'Connect');
 
             return (
-              <button
-                type="button"
-                onClick={() => {
-                  if (!connected) openConnectModal?.();
-                  else openAccountModal?.();
-                }}
+              <div
                 className="flex items-center gap-2 px-3 py-2 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors text-slate-900"
                 style={{ opacity: ready ? 1 : 0, pointerEvents: ready ? 'auto' : 'none' }}
               >
-                <div className="w-6 h-6 rounded-full bg-white border border-slate-200 overflow-hidden flex items-center justify-center">
-                  {baseAvatar ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={baseAvatar} alt="avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-[11px] font-black text-slate-700">
-                      {(baseName || account?.displayName || 'BPB').slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!connected) openConnectModal?.();
+                    else openAccountModal?.();
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <div className="w-6 h-6 rounded-full bg-white border border-slate-200 overflow-hidden flex items-center justify-center">
+                    {baseAvatar ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={baseAvatar} alt="avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-[11px] font-black text-slate-700">
+                        {(baseName || account?.displayName || 'BPB').slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
 
-                <span className="text-xs font-extrabold max-w-[140px] truncate">
-                  {label}
-                </span>
+                  <span className="text-xs font-extrabold max-w-[120px] truncate">
+                    {label}
+                  </span>
+                </button>
+
+                {/* If we are in Base host but missing identity, offer sign-in right here */}
+                {isBaseHost && connected && !baseUser && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleBaseSignIn();
+                    }}
+                    className="text-[10px] font-black text-blue-700 hover:text-blue-900"
+                    disabled={baseSignInLoading}
+                    title="Sign in to show your Base username/avatar"
+                  >
+                    {baseSignInLoading ? '…' : 'Sign in'}
+                  </button>
+                )}
 
                 {/* Optional: chain picker indicator */}
                 {connected && (
-                  <span
+                  <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       openChainModal?.();
@@ -862,9 +910,9 @@ export default function App() {
                     title="Network"
                   >
                     {chain?.name === 'Base' ? 'Base' : chain?.name}
-                  </span>
+                  </button>
                 )}
-              </button>
+              </div>
             );
           }}
         </ConnectButton.Custom>
