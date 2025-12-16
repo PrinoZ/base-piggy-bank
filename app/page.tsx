@@ -318,8 +318,6 @@ export default function App() {
   const [baseContext, setBaseContext] = useState<any>(null);
   const [baseReadySent, setBaseReadySent] = useState(false);
   const [isBaseHost, setIsBaseHost] = useState(false);
-  const [baseHostChecked, setBaseHostChecked] = useState(false);
-  const [baseHostHint, setBaseHostHint] = useState<string | null>(null);
   const [baseUser, setBaseUser] = useState<{
     fid?: number;
     username?: string;
@@ -491,18 +489,6 @@ export default function App() {
     const timeout = setTimeout(() => {
       done = true;
       clearInterval(interval);
-      // If we still don't see host APIs, we are likely opened in an in-app browser,
-      // not launched as a Mini App (so Base identity won't be available).
-      // @ts-ignore
-      const hasBase = !!(window?.base || window?.base?.miniapp);
-      setBaseHostChecked(true);
-      if (!hasBase) {
-        setBaseHostHint(
-          'Opened in browser mode. To show Base username/avatar, launch via the Base App Mini App card (so host context is injected).'
-        );
-      } else {
-        setBaseHostHint(null);
-      }
     }, 8000);
 
     return () => {
@@ -845,11 +831,6 @@ export default function App() {
                   </button>
                 )}
               </div>
-            )}
-            {!isBaseHost && baseHostChecked && baseHostHint && (
-              <p className="text-[10px] font-semibold text-amber-700">
-                {baseHostHint}
-              </p>
             )}
             {debugBase && (
               <p className="text-[9px] font-mono text-slate-400">
