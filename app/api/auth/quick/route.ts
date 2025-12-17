@@ -25,7 +25,21 @@ function getSessionSecret() {
 
 export async function POST(req: Request) {
   try {
-    const { token } = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({}));
+    const raw = (body as any)?.token;
+    const token =
+      typeof raw === 'string'
+        ? raw
+        : typeof raw?.token === 'string'
+          ? raw.token
+          : typeof raw?.jwt === 'string'
+            ? raw.jwt
+            : typeof raw?.data?.token === 'string'
+              ? raw.data.token
+              : typeof raw?.data?.jwt === 'string'
+                ? raw.data.jwt
+                : null;
+
     if (!token || typeof token !== 'string') {
       return NextResponse.json({ error: 'Missing token' }, { status: 400 });
     }

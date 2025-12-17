@@ -330,6 +330,8 @@ export default function App() {
     hasGetToken: boolean;
     tokenReceived: boolean;
     tokenLen?: number;
+    tokenType?: string;
+    tokenKeys?: string;
     decodedSub?: number | null;
     decodedIss?: string | null;
     authStatus?: number | null;
@@ -342,6 +344,16 @@ export default function App() {
     authStatus: null,
     authError: null,
   });
+
+  const normalizeQuickAuthToken = (raw: any): string | null => {
+    if (!raw) return null;
+    if (typeof raw === 'string') return raw;
+    if (typeof raw?.token === 'string') return raw.token;
+    if (typeof raw?.jwt === 'string') return raw.jwt;
+    if (typeof raw?.data?.token === 'string') return raw.data.token;
+    if (typeof raw?.data?.jwt === 'string') return raw.data.jwt;
+    return null;
+  };
 
   const decodeJwtPayload = (jwt: string) => {
     const parts = jwt.split('.');
@@ -636,10 +648,16 @@ export default function App() {
         setDebugQuickAuth((prev) => ({ ...prev, hasGetToken: typeof getToken === 'function' }));
         if (typeof getToken !== 'function') return;
 
-        const token = await Promise.resolve(getToken({ force: false }));
+        const rawToken = await Promise.resolve(getToken({ force: false }));
+        const token = normalizeQuickAuthToken(rawToken);
         setDebugQuickAuth((prev) => ({
           ...prev,
-          tokenReceived: !!token,
+          tokenReceived: !!rawToken,
+          tokenType: rawToken === null ? 'null' : Array.isArray(rawToken) ? 'array' : typeof rawToken,
+          tokenKeys:
+            rawToken && typeof rawToken === 'object' && !Array.isArray(rawToken)
+              ? Object.keys(rawToken).slice(0, 10).join(',')
+              : '',
           tokenLen: typeof token === 'string' ? token.length : undefined,
         }));
         if (!token || cancelled) return;
@@ -775,7 +793,8 @@ export default function App() {
         const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
         const getToken = sdk?.quickAuth?.getToken;
         if (typeof getToken === 'function') {
-          const token = await Promise.resolve(getToken({ force: true }));
+          const rawToken = await Promise.resolve(getToken({ force: true }));
+          const token = normalizeQuickAuthToken(rawToken);
           if (token) {
             const authRes = await fetch('/api/auth/quick', {
               method: 'POST',
@@ -1175,7 +1194,7 @@ export default function App() {
                   debug: frameSdk={String(debugEnv.hasFrameSdk)} sdk.ctx={String(debugEnv.hasSdkContext)}
                 </div>
                 <div>
-                  debug: quickAuth.hasGetToken={String(debugQuickAuth.hasGetToken)} token={String(debugQuickAuth.tokenReceived)} len={String(debugQuickAuth.tokenLen || '')}
+                  debug: quickAuth.hasGetToken={String(debugQuickAuth.hasGetToken)} token={String(debugQuickAuth.tokenReceived)} type={String(debugQuickAuth.tokenType || '')} keys={String(debugQuickAuth.tokenKeys || '')} len={String(debugQuickAuth.tokenLen || '')}
                 </div>
                 <div>
                   debug: quickAuth.sub={String(debugQuickAuth.decodedSub || '')} iss={String(debugQuickAuth.decodedIss || '')} authStatus={String(debugQuickAuth.authStatus || '')}
