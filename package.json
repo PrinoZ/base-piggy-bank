@@ -22,8 +22,7 @@
     "recharts": "^3.5.1",
     "tailwind-merge": "^3.4.0",
     "viem": "^2.41.2",
-    "wagmi": "^2.19.5",
-    "@wagmi/connectors": "^2.0.0"
+    "wagmi": "^2.19.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

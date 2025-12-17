@@ -26,6 +26,21 @@ const nextConfig: NextConfig = {
           path.resolve(__dirname, 'lib/empty-module.js')
         )
       );
+
+      // MetaMask SDK itself is not needed for our app (we rely on injected wallets / Base / Farcaster).
+      // Hard-alias it to an empty module to avoid it pulling React Native-only deps during build.
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(
+          /^@metamask\/sdk$/,
+          path.resolve(__dirname, 'lib/empty-module.js')
+        )
+      );
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(
+          /@metamask\/sdk\/dist\/browser\/es\/metamask-sdk\.js/,
+          path.resolve(__dirname, 'lib/empty-module.js')
+        )
+      );
       
       // 同时添加到 fallback 和 alias，确保完全忽略
       config.resolve = config.resolve || {};
@@ -37,12 +52,18 @@ const nextConfig: NextConfig = {
       config.resolve.alias = {
         ...(config.resolve.alias || {}),
         '@react-native-async-storage/async-storage': path.resolve(__dirname, 'lib/empty-module.js'),
+        '@metamask/sdk': path.resolve(__dirname, 'lib/empty-module.js'),
       };
       
       // 添加 IgnorePlugin 作为额外保障
       config.plugins.push(
         new webpack.IgnorePlugin({
           resourceRegExp: /^@react-native-async-storage\/async-storage$/,
+        })
+      );
+      config.plugins.push(
+        new webpack.IgnorePlugin({
+          resourceRegExp: /^@metamask\/sdk$/,
         })
       );
     }
