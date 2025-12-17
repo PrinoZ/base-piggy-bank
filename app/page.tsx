@@ -311,6 +311,18 @@ export default function App() {
   } | null>(null);
   const [baseSignInLoading, setBaseSignInLoading] = useState(false);
   const [debugBase, setDebugBase] = useState(false);
+  const [debugLsFid, setDebugLsFid] = useState<string | null>(null);
+  const [debugSignInResult, setDebugSignInResult] = useState<any>(null);
+
+  const mergeBaseUser = (u: any) => {
+    if (!u) return;
+    setBaseUser((prev: any) => ({
+      fid: u?.fid ?? prev?.fid,
+      username: u?.username ?? prev?.username,
+      displayName: u?.displayName ?? prev?.displayName,
+      pfpUrl: u?.pfpUrl ?? prev?.pfpUrl,
+    }));
+  };
 
   const hydrateFromSession = async () => {
     try {
@@ -327,6 +339,7 @@ export default function App() {
     hydrateFromSession();
     try {
       const fidStr = window.localStorage.getItem('bpb_fc_fid');
+      setDebugLsFid(fidStr);
       const fid = fidStr ? Number(fidStr) : NaN;
       if (Number.isFinite(fid) && fid > 0 && !baseUser?.fid) {
         setBaseUser((prev: any) => ({ ...(prev || {}), fid }));
@@ -491,7 +504,7 @@ export default function App() {
 
         const fromState = extractBaseUser(baseContext) || extractBaseUser(frameContext);
         if (fromState) {
-          setBaseUser(fromState);
+          mergeBaseUser(fromState);
           done = true;
           return;
         }
@@ -502,7 +515,7 @@ export default function App() {
           setBaseContext(wbCtx);
           const fromWin = extractBaseUser(wbCtx);
           if (fromWin) {
-            setBaseUser(fromWin);
+            mergeBaseUser(fromWin);
             done = true;
             return;
           }
@@ -521,7 +534,7 @@ export default function App() {
           setBaseContext((prev: any) => prev || sdkCtx);
           const fromSdk = extractBaseUser(sdkCtx);
           if (fromSdk) {
-            setBaseUser(fromSdk);
+            mergeBaseUser(fromSdk);
             done = true;
             return;
           }
@@ -592,7 +605,7 @@ export default function App() {
           const sdkCtx =
             typeof sdk?.context === 'function' ? await sdk.context() : sdk?.context;
           const u = extractBaseUser(sdkCtx);
-          if (u && !cancelled) setBaseUser(u);
+          if (u && !cancelled) mergeBaseUser(u);
         } catch {}
 
         if (!cancelled) await hydrateFromSession();
@@ -659,6 +672,12 @@ export default function App() {
         }
       }
 
+      // Expose on-screen debugging for mobile (only when ?debug=1)
+      try {
+        setDebugSignInResult(signInResult);
+        window.localStorage.setItem('bpb_fc_signin_result', JSON.stringify(signInResult || null));
+      } catch {}
+
       // If signIn() returns a fid/user, persist it immediately (works even when QuickAuth/cookies are blocked).
       try {
         const fid =
@@ -671,6 +690,7 @@ export default function App() {
                 : undefined;
         if (fid) {
           try { window.localStorage.setItem('bpb_fc_fid', String(fid)); } catch {}
+          setDebugLsFid(String(fid));
           setBaseUser((prev: any) => ({ ...(prev || {}), fid }));
         }
       } catch {}
@@ -704,7 +724,7 @@ export default function App() {
         setIsBaseHost(true);
         setBaseContext(wbCtx);
         const u = extractBaseUser(wbCtx);
-        if (u) setBaseUser(u);
+        if (u) mergeBaseUser(u);
       } else {
         const mod: any = await import('@farcaster/frame-sdk');
         const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
@@ -714,7 +734,7 @@ export default function App() {
           setIsBaseHost(true);
           setBaseContext((prev: any) => prev || sdkCtx);
           const u = extractBaseUser(sdkCtx);
-          if (u) setBaseUser(u);
+          if (u) mergeBaseUser(u);
         }
       }
     } catch (e) {
@@ -1068,9 +1088,16 @@ export default function App() {
               </div>
             )}
             {debugBase && (
-              <p className="text-[9px] font-mono text-slate-400">
-                debug: host={String(isBaseHost)} user={baseUser ? 'yes' : 'no'} ready={String(baseReadySent)}
-              </p>
+              <div className="mt-1 text-[9px] font-mono text-slate-400 leading-snug">
+                <div>debug: host={String(isBaseHost)} ready={String(baseReadySent)} connected={String(isConnected)}</div>
+                <div>debug: baseUser.fid={String(baseUser?.fid || '')} ls_fid={String(debugLsFid || '')}</div>
+                <div className="truncate">debug: addr={(address || '').slice(0, 10)}{address ? '…' : ''}</div>
+                {debugSignInResult ? (
+                  <div className="truncate">debug: signInResult={JSON.stringify(debugSignInResult)}</div>
+                ) : (
+                  <div className="truncate">debug: signInResult=(null)</div>
+                )}
+              </div>
             )}
           </div>
         </div>
