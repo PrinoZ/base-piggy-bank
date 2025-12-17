@@ -327,6 +327,25 @@ export default function App() {
   const [baseSignInLoading, setBaseSignInLoading] = useState(false);
   const [debugBase, setDebugBase] = useState(false);
 
+  // Read our server session cookie (set by /api/auth/quick) and hydrate fid without any UI.
+  const hydrateFromSession = async () => {
+    try {
+      const r = await fetch('/api/auth/me', { method: 'GET' });
+      const j = await r.json().catch(() => ({}));
+      const fid = j?.user?.fid;
+      if (fid && !baseUser?.fid) {
+        setBaseUser((prev: any) => ({ ...(prev || {}), fid }));
+      }
+    } catch {}
+  };
+
+  // Always attempt to hydrate from session cookie on mount (covers cases where wallet isn't connected yet,
+  // but the user already authenticated previously).
+  useEffect(() => {
+    hydrateFromSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const extractBaseUser = (ctx: any) => {
     if (!ctx) return null;
     const u =
@@ -567,12 +586,7 @@ export default function App() {
         } catch {}
 
         // Fallback: at least get fid from our session cookie
-        try {
-          const r = await fetch('/api/auth/me', { method: 'GET' });
-          const j = await r.json().catch(() => ({}));
-          const fid = j?.user?.fid;
-          if (fid && !cancelled) setBaseUser((prev: any) => prev || { fid });
-        } catch {}
+        if (!cancelled) await hydrateFromSession();
       } catch (e) {
         // ignore
       }
@@ -585,6 +599,14 @@ export default function App() {
       clearTimeout(t);
     };
   }, [baseUser?.fid, baseUser?.username]);
+
+  // If wallet is connected but we still don't have fid, try to hydrate from session cookie.
+  useEffect(() => {
+    if (isConnected && !baseUser?.fid) {
+      hydrateFromSession();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected]);
 
   // If we have a fid but no avatar, try to hydrate profile from backend (optional, requires NEYNAR_API_KEY).
   useEffect(() => {
@@ -639,6 +661,25 @@ export default function App() {
           await Promise.resolve(sdkSignIn());
         }
       }
+
+      // After sign-in, try to get a Quick Auth token (if supported) and establish our server session cookie.
+      // This helps us reliably obtain fid even when context doesn't include full user profile.
+      try {
+        const mod: any = await import('@farcaster/frame-sdk');
+        const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
+        const getToken = sdk?.quickAuth?.getToken;
+        if (typeof getToken === 'function') {
+          const token = await Promise.resolve(getToken({ force: true }));
+          if (token) {
+            await fetch('/api/auth/quick', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token }),
+            });
+            await hydrateFromSession();
+          }
+        }
+      } catch {}
 
       // After sign-in, re-pull context and extract user immediately.
       // The sign-in process should update the context with user identity (FID, username, etc.)
@@ -982,10 +1023,11 @@ export default function App() {
             const ready = mounted;
             const connected = ready && account && chain;
 
-            const baseAvatar =
-              baseUser?.pfpUrl && baseUser?.fid
-                ? `/api/farcaster/avatar?fid=${encodeURIComponent(String(baseUser.fid))}`
-                : baseUser?.pfpUrl || null;
+            // Prefer Farcaster avatar (proxied through our domain) if we have a fid.
+            // This avoids relying on context fields like pfpUrl, which may be missing.
+            const baseAvatar = baseUser?.fid
+              ? `/api/farcaster/avatar?fid=${encodeURIComponent(String(baseUser.fid))}`
+              : null;
             const fallbackAvatar =
               account?.address
                 ? `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(account.address)}`
