@@ -982,7 +982,10 @@ export default function App() {
             const ready = mounted;
             const connected = ready && account && chain;
 
-            const baseAvatar = baseUser?.pfpUrl || null;
+            const baseAvatar =
+              baseUser?.pfpUrl && baseUser?.fid
+                ? `/api/farcaster/avatar?fid=${encodeURIComponent(String(baseUser.fid))}`
+                : baseUser?.pfpUrl || null;
             const fallbackAvatar =
               account?.address
                 ? `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(account.address)}`
