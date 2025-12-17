@@ -335,6 +335,40 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // If we can't get fid via cookies/QuickAuth (common in embedded webviews),
+  // try to map the connected wallet address -> Farcaster profile (verified address) via Neynar.
+  useEffect(() => {
+    let cancelled = false;
+    if (!isConnected || !address) return;
+    if (baseUser?.fid) return;
+
+    const run = async () => {
+      try {
+        const r = await fetch(
+          `/api/farcaster/profile-by-address?address=${encodeURIComponent(address.toLowerCase())}`
+        );
+        const j = await r.json().catch(() => ({}));
+        const u = j?.user;
+        if (!u?.fid || cancelled) return;
+        try {
+          window.localStorage.setItem('bpb_fc_fid', String(u.fid));
+        } catch {}
+        setBaseUser((prev: any) => ({
+          ...(prev || {}),
+          fid: prev?.fid || u.fid,
+          username: prev?.username || u.username,
+          displayName: prev?.displayName || u.displayName,
+          pfpUrl: prev?.pfpUrl || u.pfpUrl,
+        }));
+      } catch {}
+    };
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isConnected, address, baseUser?.fid]);
+
   const extractBaseUser = (ctx: any) => {
     if (!ctx) return null;
     const u =
@@ -1038,7 +1072,7 @@ export default function App() {
             // Prefer Farcaster avatar (proxied through our domain) if we have a fid.
             // This avoids relying on context fields like pfpUrl, which may be missing.
             const baseAvatar = baseUser?.fid
-              ? `/api/farcaster/avatar?fid=${encodeURIComponent(String(baseUser.fid))}`
+              ? `${APP_URL || window.location.origin}/api/farcaster/avatar?fid=${encodeURIComponent(String(baseUser.fid))}`
               : null;
             const fallbackAvatar =
               account?.address
