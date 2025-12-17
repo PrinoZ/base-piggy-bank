@@ -12,6 +12,15 @@ async function fetchJson(url: string, headers: Record<string, string>) {
   return { __ok: true, __status: r.status, __json: json, __url: url };
 }
 
+function pickFirstUser(data: any) {
+  return (
+    (Array.isArray(data?.users) && data.users[0]) ||
+    (Array.isArray(data?.result?.users) && data.result.users[0]) ||
+    data?.user ||
+    null
+  );
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -29,22 +38,30 @@ export async function GET(req: Request) {
 
     // Neynar has shipped a few variants over time; try a small set of likely endpoints.
     const candidates = [
-      // Commonly documented name
+      // Bulk by address (try multiple address_types variants)
       `https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses=${encodeURIComponent(address)}`,
-      // Some deployments used "bulk-by-address" under "user"
       `https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses=${encodeURIComponent(address)}&address_types=verified_addresses`,
+      `https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses=${encodeURIComponent(address)}&address_types=verified_address`,
+      `https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses=${encodeURIComponent(address)}&address_types=custody_address`,
+      `https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses=${encodeURIComponent(address)}&address_types=all`,
       // Alternate naming in some clients
       `https://api.neynar.com/v2/farcaster/user/by_verification?address=${encodeURIComponent(address)}`,
     ];
 
     let data: any = null;
+    let user: any = null;
     const tries: any[] = [];
     for (const u of candidates) {
       const res = await fetchJson(u, headers);
       tries.push({ url: res?.__url, ok: res?.__ok, status: res?.__status });
       if (res?.__ok && res?.__json) {
-        data = res.__json;
-        break;
+        const candidateData = res.__json;
+        const foundUser = pickFirstUser(candidateData);
+        if (foundUser) {
+          data = candidateData;
+          user = foundUser;
+          break;
+        }
       }
     }
 
@@ -55,13 +72,7 @@ export async function GET(req: Request) {
       );
     }
 
-    // Normalize possible shapes
-    const user =
-      (Array.isArray(data?.users) && data.users[0]) ||
-      (Array.isArray(data?.result?.users) && data.result.users[0]) ||
-      data?.user ||
-      null;
-
+    // If we got JSON responses but no user across candidates, treat as "no_user".
     if (!user) {
       return NextResponse.json(
         { user: null, reason: 'no_user', tries: debug ? tries : undefined },
