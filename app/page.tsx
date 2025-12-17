@@ -1096,9 +1096,9 @@ export default function App() {
                     </div>
                 </div>
               </div>
-              <div className="flex-1 w-full min-h-0 flex flex-col px-4 pt-1 pb-3 overflow-hidden">
+              <div className="flex-1 w-full min-h-0 flex flex-col px-4 pt-1 pb-2 overflow-hidden">
                 {/* Chart flexes to remaining height so Strategy can stay single-screen */}
-                <div className="w-full flex-1 min-h-[120px] [@media(max-height:740px)]:min-h-[100px] [@media(max-height:690px)]:min-h-[88px]">
+                <div className="w-full flex-1 min-h-[140px] [@media(max-height:740px)]:min-h-[115px] [@media(max-height:690px)]:min-h-[100px]">
                     {isMounted ? (
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={calculation.data} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
