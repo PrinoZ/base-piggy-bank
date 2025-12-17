@@ -845,7 +845,12 @@ export default function App() {
         // Use signer only for write tx (approve)
         const usdcWriteContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, signer);
 
+        const selectedFreq = FREQUENCIES[freqIndex];
         const requiredAmount = ethers.parseUnits(amount.toString(), 6);
+        // Approve enough for the whole plan (estimated by duration & frequency).
+        // Uses a simple 30-days-per-month approximation.
+        const plannedTrades = Math.max(1, Math.ceil((Number(duration) * 30) / selectedFreq.days));
+        const approveTarget = requiredAmount * BigInt(plannedTrades);
         let allowance: bigint;
         try {
           allowance = await usdcReadContract.allowance(normalizedAccount, DCA_CONTRACT_ADDRESS);
@@ -855,7 +860,7 @@ export default function App() {
           );
         }
         
-        if (allowance < requiredAmount) {
+        if (allowance < approveTarget) {
             step = 'approve';
             setDcaStatus('Approving USDC…');
             // Some tokens/providers require resetting allowance to 0 before increasing it.
@@ -875,12 +880,12 @@ export default function App() {
                 address: USDC_ADDRESS,
                 abi: ERC20_ABI,
                 functionName: 'approve',
-                args: [DCA_CONTRACT_ADDRESS, requiredAmount],
+                args: [DCA_CONTRACT_ADDRESS, approveTarget],
                 chainId: 8453,
               } as any);
             } catch (e: any) {
               // Fallback to ethers signer path
-              const approveTx = await usdcWriteContract.approve(DCA_CONTRACT_ADDRESS, requiredAmount);
+              const approveTx = await usdcWriteContract.approve(DCA_CONTRACT_ADDRESS, approveTarget);
               await approveTx.wait();
             }
         }
@@ -890,7 +895,6 @@ export default function App() {
         setDcaStatus('Signing…');
         const signature = await signer.signMessage(message);
 
-        const selectedFreq = FREQUENCIES[freqIndex];
         const planData = {
             token_in: USDC_ADDRESS,
             token_out: CBBTC_ADDRESS,
