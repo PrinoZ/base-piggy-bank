@@ -293,7 +293,6 @@ export default function App() {
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
   const [dcaError, setDcaError] = useState<string | null>(null);
-  const [dcaStatus, setDcaStatus] = useState<string | null>(null);
 
   const [amount, setAmount] = useState<number | ''>(100);
   const [freqIndex, setFreqIndex] = useState(0); 
@@ -309,41 +308,6 @@ export default function App() {
     displayName?: string;
     pfpUrl?: string;
   } | null>(null);
-  const [baseSignInLoading, setBaseSignInLoading] = useState(false);
-  const [debugBase, setDebugBase] = useState(false);
-  const [debugLsFid, setDebugLsFid] = useState<string | null>(null);
-  const [debugSignInResult, setDebugSignInResult] = useState<any>(null);
-  const [debugEnv, setDebugEnv] = useState<{
-    hasWindowBase: boolean;
-    hasWindowBaseContext: boolean;
-    hasFrameSdk: boolean;
-    inMiniApp: boolean | null;
-    hasSdkContext: boolean;
-  }>({
-    hasWindowBase: false,
-    hasWindowBaseContext: false,
-    hasFrameSdk: false,
-    inMiniApp: null,
-    hasSdkContext: false,
-  });
-  const [debugQuickAuth, setDebugQuickAuth] = useState<{
-    hasGetToken: boolean;
-    tokenReceived: boolean;
-    tokenLen?: number;
-    tokenType?: string;
-    tokenKeys?: string;
-    decodedSub?: number | null;
-    decodedIss?: string | null;
-    authStatus?: number | null;
-    authError?: string | null;
-  }>({
-    hasGetToken: false,
-    tokenReceived: false,
-    decodedSub: null,
-    decodedIss: null,
-    authStatus: null,
-    authError: null,
-  });
 
   const normalizeQuickAuthToken = (raw: any): string | null => {
     if (!raw) return null;
@@ -390,7 +354,6 @@ export default function App() {
     hydrateFromSession();
     try {
       const fidStr = window.localStorage.getItem('bpb_fc_fid');
-      setDebugLsFid(fidStr);
       const fid = fidStr ? Number(fidStr) : NaN;
       if (Number.isFinite(fid) && fid > 0 && !baseUser?.fid) {
         setBaseUser((prev: any) => ({ ...(prev || {}), fid }));
@@ -531,7 +494,6 @@ export default function App() {
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-      setDebugBase(params.get('debug') === '1');
       const frameCtx = params.get('frameContext');
       const baseCtx = params.get('baseContext');
       if (frameCtx) setFrameContext(JSON.parse(decodeURIComponent(frameCtx)));
@@ -551,9 +513,6 @@ export default function App() {
       try {
         // @ts-ignore
         const hasBase = !!(window?.base || window?.base?.miniapp);
-        // @ts-ignore
-        const hasBaseCtx = !!(window?.base?.context || window?.base?.miniapp?.context);
-        setDebugEnv((prev) => ({ ...prev, hasWindowBase: hasBase, hasWindowBaseContext: hasBaseCtx }));
         if (hasBase) setIsBaseHost(true);
 
         const fromState = extractBaseUser(baseContext) || extractBaseUser(frameContext);
@@ -577,14 +536,12 @@ export default function App() {
 
         const mod: any = await import('@farcaster/frame-sdk');
         const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
-        setDebugEnv((prev) => ({ ...prev, hasFrameSdk: !!sdk }));
         let inMiniApp: boolean | null = null;
         try {
           inMiniApp = typeof sdk?.isInMiniApp === 'function' ? await sdk.isInMiniApp() : null;
         } catch {
           inMiniApp = null;
         }
-        setDebugEnv((prev) => ({ ...prev, inMiniApp }));
         if (inMiniApp === true) setIsBaseHost(true);
         const sdkReady = sdk?.actions?.ready;
         if (typeof sdkReady === 'function') {
@@ -593,7 +550,6 @@ export default function App() {
         const sdkCtx =
           typeof sdk?.context === 'function' ? await sdk.context() : sdk?.context;
         if (sdkCtx) {
-          setDebugEnv((prev) => ({ ...prev, hasSdkContext: true }));
           setIsBaseHost(true);
           setBaseContext((prev: any) => prev || sdkCtx);
           const fromSdk = extractBaseUser(sdkCtx);
@@ -645,21 +601,10 @@ export default function App() {
         if (isInMiniApp === false) return;
 
         const getToken = sdk?.quickAuth?.getToken;
-        setDebugQuickAuth((prev) => ({ ...prev, hasGetToken: typeof getToken === 'function' }));
         if (typeof getToken !== 'function') return;
 
         const rawToken = await Promise.resolve(getToken({ force: false }));
         const token = normalizeQuickAuthToken(rawToken);
-        setDebugQuickAuth((prev) => ({
-          ...prev,
-          tokenReceived: !!rawToken,
-          tokenType: rawToken === null ? 'null' : Array.isArray(rawToken) ? 'array' : typeof rawToken,
-          tokenKeys:
-            rawToken && typeof rawToken === 'object' && !Array.isArray(rawToken)
-              ? Object.keys(rawToken).slice(0, 10).join(',')
-              : '',
-          tokenLen: typeof token === 'string' ? token.length : undefined,
-        }));
         if (!token || cancelled) return;
 
         // Decode fid from JWT payload immediately for UI (even if cookies are blocked).
@@ -668,14 +613,11 @@ export default function App() {
           const sub = payload?.sub;
           const iss = payload?.iss;
           const fid = typeof sub === 'number' ? sub : typeof sub === 'string' && /^\d+$/.test(sub) ? Number(sub) : null;
-          setDebugQuickAuth((prev) => ({ ...prev, decodedSub: fid, decodedIss: typeof iss === 'string' ? iss : null }));
           if (fid && !baseUser?.fid) {
             try { window.localStorage.setItem('bpb_fc_fid', String(fid)); } catch {}
-            setDebugLsFid(String(fid));
             if (!cancelled) setBaseUser((prev: any) => ({ ...(prev || {}), fid }));
           }
-        } catch (e: any) {
-          setDebugQuickAuth((prev) => ({ ...prev, authError: `decode_failed:${String(e?.message || e)}` }));
+        } catch {
         }
 
         const authRes = await fetch('/api/auth/quick', {
@@ -684,7 +626,6 @@ export default function App() {
           credentials: 'include',
           body: JSON.stringify({ token }),
         });
-        setDebugQuickAuth((prev) => ({ ...prev, authStatus: authRes?.status ?? null }));
         try {
           const j = await authRes.json().catch(() => ({}));
           const fid = j?.user?.fid;
@@ -746,98 +687,6 @@ export default function App() {
       cancelled = true;
     };
   }, [baseUser?.fid, baseUser?.pfpUrl]);
-
-  const handleBaseSignIn = async () => {
-    if (baseSignInLoading) return;
-    setBaseSignInLoading(true);
-    try {
-      // @ts-ignore
-      const baseSignIn = window?.base?.actions?.signIn || window?.base?.miniapp?.actions?.signIn;
-      let signInResult: any = null;
-      if (typeof baseSignIn === 'function') {
-        signInResult = await Promise.resolve(baseSignIn());
-      } else {
-        const mod: any = await import('@farcaster/frame-sdk');
-        const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
-        const sdkSignIn = sdk?.actions?.signIn;
-        if (typeof sdkSignIn === 'function') {
-          signInResult = await Promise.resolve(sdkSignIn());
-        }
-      }
-
-      // Expose on-screen debugging for mobile (only when ?debug=1)
-      try {
-        setDebugSignInResult(signInResult);
-        window.localStorage.setItem('bpb_fc_signin_result', JSON.stringify(signInResult || null));
-      } catch {}
-
-      // If signIn() returns a fid/user, persist it immediately (works even when QuickAuth/cookies are blocked).
-      try {
-        const fid =
-          typeof signInResult?.fid === 'number'
-            ? signInResult.fid
-            : typeof signInResult?.user?.fid === 'number'
-              ? signInResult.user.fid
-              : typeof signInResult?.payload?.sub === 'number'
-                ? signInResult.payload.sub
-                : undefined;
-        if (fid) {
-          try { window.localStorage.setItem('bpb_fc_fid', String(fid)); } catch {}
-          setDebugLsFid(String(fid));
-          setBaseUser((prev: any) => ({ ...(prev || {}), fid }));
-        }
-      } catch {}
-
-      try {
-        const mod: any = await import('@farcaster/frame-sdk');
-        const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
-        const getToken = sdk?.quickAuth?.getToken;
-        if (typeof getToken === 'function') {
-          const rawToken = await Promise.resolve(getToken({ force: true }));
-          const token = normalizeQuickAuthToken(rawToken);
-          if (token) {
-            const authRes = await fetch('/api/auth/quick', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({ token }),
-            });
-            try {
-              const j = await authRes.json().catch(() => ({}));
-              const fid = j?.user?.fid;
-              if (fid) window.localStorage.setItem('bpb_fc_fid', String(fid));
-            } catch {}
-            await hydrateFromSession();
-          }
-        }
-      } catch {}
-
-      // @ts-ignore
-      const wbCtx = window?.base?.context || window?.base?.miniapp?.context;
-      if (wbCtx) {
-        setIsBaseHost(true);
-        setBaseContext(wbCtx);
-        const u = extractBaseUser(wbCtx);
-        if (u) mergeBaseUser(u);
-      } else {
-        const mod: any = await import('@farcaster/frame-sdk');
-        const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
-        const sdkCtx =
-          typeof sdk?.context === 'function' ? await sdk.context() : sdk?.context;
-        if (sdkCtx) {
-          setIsBaseHost(true);
-          setBaseContext((prev: any) => prev || sdkCtx);
-          const u = extractBaseUser(sdkCtx);
-          if (u) mergeBaseUser(u);
-        }
-      }
-    } catch (e) {
-      console.warn('FIP-11 Sign in with Farcaster failed/unavailable', e);
-      try { setDebugSignInResult({ error: String((e as any)?.message || e) }); } catch {}
-    } finally {
-      setBaseSignInLoading(false);
-    }
-  };
 
   useEffect(() => {
     if (isConnected && address) {
@@ -965,7 +814,6 @@ export default function App() {
 
   const handleStartDCA = async () => {
     setDcaError(null);
-    setDcaStatus(null);
 
     if (!isConnected || !address) {
         setDcaError('Please connect your wallet first.');
@@ -988,7 +836,6 @@ export default function App() {
 
     setIsLoading(true);
     const normalizedAccount = address.toLowerCase();
-    let step: 'allowance' | 'approve' | 'sign' | 'create-plan' | 'unknown' = 'unknown';
 
     try {
         if (!amount || Number(amount) <= 0) {
@@ -996,8 +843,6 @@ export default function App() {
             return;
         }
 
-        step = 'allowance';
-        setDcaStatus('Checking allowance…');
       const now = Date.now();
       const expiresAt = now + 5 * 60 * 1000; // 5 分钟有效
       const nonce = crypto.randomUUID ? crypto.randomUUID() : `${now}-${Math.random()}`;
@@ -1024,13 +869,11 @@ export default function App() {
           allowance = await usdcReadContract.allowance(normalizedAccount, DCA_CONTRACT_ADDRESS);
         } catch (e: any) {
           throw new Error(
-            `Failed to read USDC allowance (step=allowance). This is often caused by embedded wallet eth_call limitations. Please retry.`
+            'Failed to read token allowance. Please retry.'
           );
         }
         
         if (allowance < approveTarget) {
-            step = 'approve';
-            setDcaStatus('Approving USDC…');
             // Some tokens/providers require resetting allowance to 0 before increasing it.
             // Also: in embedded Farcaster wallets, ethers BrowserProvider can be flaky for contract writes.
             // Prefer wagmi/viem writeContract (wallet client) for the approve tx.
@@ -1059,8 +902,6 @@ export default function App() {
         }
 
         const message = `Confirm DCA Plan Creation: Token=USDC->cbBTC, Amount=$${amount}, Freq=${FREQUENCIES[freqIndex].label}, Nonce=${nonce}, ExpiresAt=${expiresAt}`;
-        step = 'sign';
-        setDcaStatus('Signing…');
         const signature = await signer.signMessage(message);
 
         const planData = {
@@ -1071,8 +912,6 @@ export default function App() {
             next_run_time: new Date().toISOString()
         };
 
-        step = 'create-plan';
-        setDcaStatus('Creating plan…');
         const response = await fetch('/api/create-plan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1081,7 +920,6 @@ export default function App() {
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Failed to create plan');
 
-        setDcaStatus('Plan created!');
         if (result.data) {
              setActiveJobs(prev => [result.data, ...prev]);
              setRefreshTrigger(prev => prev + 1); 
@@ -1095,11 +933,13 @@ export default function App() {
         } else {
             const msg = String(err?.shortMessage || err?.message || '');
             if (msg.toLowerCase().includes('missing revert data')) {
-              setDcaError(
-                `Transaction reverted without a reason (step=${step}). This usually means you're on the wrong network, the contract address is wrong for the current chain, or the wallet provider couldn't simulate the call. Please confirm you're on Base Mainnet (8453) and retry.`
-              );
+              setDcaError('Transaction reverted. Please confirm you are on Base Mainnet (8453) and retry.');
+            } else if (msg.toLowerCase().includes('insufficient funds')) {
+              setDcaError('Insufficient ETH for gas on Base. Please top up and retry.');
+            } else if (msg.toLowerCase().includes('wrong network')) {
+              setDcaError('Please switch to Base Mainnet (8453) and retry.');
             } else {
-              setDcaError(err?.shortMessage || err?.message || `Failed to start DCA (step=${step}).`);
+              setDcaError(err?.shortMessage || err?.message || 'Failed to start DCA. Please retry.');
             }
         }
     } finally {
@@ -1158,61 +998,10 @@ export default function App() {
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold shadow-md"><PiggyBank size={18} /></div>
           <div>
             <h1 className="text-base font-extrabold text-slate-900 leading-tight">Base piggy bank</h1>
-            {/* 连接状态现在由 RainbowKit 按钮处理 */}
-            {(isBaseHost || baseContext) && (
-              <div className="flex items-center gap-2">
-                <p className="text-[10px] font-semibold text-blue-600">
-                  {baseUser?.displayName
-                    ? `Base: ${baseUser.displayName}`
-                    : baseUser?.username
-                      ? `Base: @${baseUser.username}`
-                      : baseUser?.fid
-                        ? `Base: fid ${baseUser.fid}`
-                        : 'Base Host Detected'}
-                  {baseReadySent ? ' · Ready' : ' · Waiting…'}
-                </p>
-                {((isBaseHost || debugBase) && !baseUser?.fid) && (
-                  <button
-                    onClick={handleBaseSignIn}
-                    disabled={baseSignInLoading}
-                    className="text-[10px] font-bold text-slate-600 hover:text-slate-900 disabled:opacity-50"
-                  >
-                    {baseSignInLoading ? 'Signing…' : 'Sign in'}
-                  </button>
-                )}
-              </div>
-            )}
-            {debugBase && (
-              <div className="mt-1 text-[9px] font-mono text-slate-400 leading-snug">
-                <div>debug: host={String(isBaseHost)} ready={String(baseReadySent)} connected={String(isConnected)}</div>
-                <div>debug: baseUser.fid={String(baseUser?.fid || '')} ls_fid={String(debugLsFid || '')}</div>
-                <div className="truncate">debug: addr={(address || '').slice(0, 10)}{address ? '…' : ''}</div>
-                <div>
-                  debug: inMiniApp={String(debugEnv.inMiniApp)} window.base={String(debugEnv.hasWindowBase)} base.ctx={String(debugEnv.hasWindowBaseContext)}
-                </div>
-                <div>
-                  debug: frameSdk={String(debugEnv.hasFrameSdk)} sdk.ctx={String(debugEnv.hasSdkContext)}
-                </div>
-                <div>
-                  debug: quickAuth.hasGetToken={String(debugQuickAuth.hasGetToken)} token={String(debugQuickAuth.tokenReceived)} type={String(debugQuickAuth.tokenType || '')} keys={String(debugQuickAuth.tokenKeys || '')} len={String(debugQuickAuth.tokenLen || '')}
-                </div>
-                <div>
-                  debug: quickAuth.sub={String(debugQuickAuth.decodedSub || '')} iss={String(debugQuickAuth.decodedIss || '')} authStatus={String(debugQuickAuth.authStatus || '')}
-                </div>
-                {debugQuickAuth.authError ? (
-                  <div className="truncate">debug: quickAuth.err={String(debugQuickAuth.authError)}</div>
-                ) : null}
-                {debugSignInResult ? (
-                  <div className="truncate">debug: signInResult={JSON.stringify(debugSignInResult)}</div>
-                ) : (
-                  <div className="truncate">debug: signInResult=(null)</div>
-                )}
-              </div>
-            )}
           </div>
         </div>
         
-        {/* === Custom account pill (show Base avatar/username when available) === */}
+        {/* === Custom account pill (prefer Farcaster avatar when we have a fid) === */}
         <ConnectButton.Custom>
           {({
             account,
@@ -1264,24 +1053,6 @@ export default function App() {
                     )}
                   </div>
                 </button>
-
-                {/* If we are in Base host but missing identity, offer sign-in right here */}
-                {isBaseHost && connected && !baseUser && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleBaseSignIn();
-                    }}
-                    className="text-[10px] font-black text-blue-700 hover:text-blue-900"
-                    disabled={baseSignInLoading}
-                    title="Sign in to show your Base username/avatar"
-                  >
-                    {baseSignInLoading ? '…' : 'Sign in'}
-                  </button>
-                )}
-
-                {/* (Optional) If you want chain picker back later, we can re-add it. */}
               </div>
             );
           }}
@@ -1353,13 +1124,12 @@ export default function App() {
               </div>
               <div className="pt-1"><CompactSlider label="Duration" value={duration} min={1} max={48} unit="Months" onChange={setDuration} /></div>
               <div className="pt-1">
-                {/* 这里的按钮逻辑现在只负责触发 handleStartDCA，如果没连接，函数内部会拦截 */}
                 <button className={`w-full text-white font-bold text-lg py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 active:bg-blue-700 active:scale-[0.98] shadow-blue-600/20'}`} onClick={handleStartDCA} disabled={isLoading}>
-                  {isLoading ? 'Processing...' : (!isConnected ? 'Connect Wallet to Start' : (<>Start DCA <ChevronRight size={20} /></>))}
+                  {isLoading ? 'Processing...' : (<>Start DCA <ChevronRight size={20} /></>)}
                 </button>
-                {(dcaError || dcaStatus) && (
-                  <div className={`mt-2 text-[10px] px-2 font-medium text-center ${dcaError ? 'text-red-500' : 'text-slate-500'}`}>
-                    {dcaError || dcaStatus}
+                {dcaError && (
+                  <div className="mt-2 text-[10px] px-2 font-medium text-center text-red-500">
+                    {dcaError}
                   </div>
                 )}
                 <p className="text-[10px] text-slate-400 mt-2 px-2 font-medium text-center">This is a non-custodial protocol. We don't hold any user funds.</p>
