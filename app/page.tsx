@@ -326,6 +326,32 @@ export default function App() {
     inMiniApp: null,
     hasSdkContext: false,
   });
+  const [debugQuickAuth, setDebugQuickAuth] = useState<{
+    hasGetToken: boolean;
+    tokenReceived: boolean;
+    tokenLen?: number;
+    decodedSub?: number | null;
+    decodedIss?: string | null;
+    authStatus?: number | null;
+    authError?: string | null;
+  }>({
+    hasGetToken: false,
+    tokenReceived: false,
+    decodedSub: null,
+    decodedIss: null,
+    authStatus: null,
+    authError: null,
+  });
+
+  const decodeJwtPayload = (jwt: string) => {
+    const parts = jwt.split('.');
+    if (parts.length < 2) return null;
+    const b64url = parts[1];
+    const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const json = atob(padded);
+    return JSON.parse(json);
+  };
 
   const mergeBaseUser = (u: any) => {
     if (!u) return;
@@ -607,10 +633,32 @@ export default function App() {
         if (isInMiniApp === false) return;
 
         const getToken = sdk?.quickAuth?.getToken;
+        setDebugQuickAuth((prev) => ({ ...prev, hasGetToken: typeof getToken === 'function' }));
         if (typeof getToken !== 'function') return;
 
         const token = await Promise.resolve(getToken({ force: false }));
+        setDebugQuickAuth((prev) => ({
+          ...prev,
+          tokenReceived: !!token,
+          tokenLen: typeof token === 'string' ? token.length : undefined,
+        }));
         if (!token || cancelled) return;
+
+        // Decode fid from JWT payload immediately for UI (even if cookies are blocked).
+        try {
+          const payload: any = decodeJwtPayload(token);
+          const sub = payload?.sub;
+          const iss = payload?.iss;
+          const fid = typeof sub === 'number' ? sub : typeof sub === 'string' && /^\d+$/.test(sub) ? Number(sub) : null;
+          setDebugQuickAuth((prev) => ({ ...prev, decodedSub: fid, decodedIss: typeof iss === 'string' ? iss : null }));
+          if (fid && !baseUser?.fid) {
+            try { window.localStorage.setItem('bpb_fc_fid', String(fid)); } catch {}
+            setDebugLsFid(String(fid));
+            if (!cancelled) setBaseUser((prev: any) => ({ ...(prev || {}), fid }));
+          }
+        } catch (e: any) {
+          setDebugQuickAuth((prev) => ({ ...prev, authError: `decode_failed:${String(e?.message || e)}` }));
+        }
 
         const authRes = await fetch('/api/auth/quick', {
           method: 'POST',
@@ -618,6 +666,7 @@ export default function App() {
           credentials: 'include',
           body: JSON.stringify({ token }),
         });
+        setDebugQuickAuth((prev) => ({ ...prev, authStatus: authRes?.status ?? null }));
         try {
           const j = await authRes.json().catch(() => ({}));
           const fid = j?.user?.fid;
@@ -1125,6 +1174,15 @@ export default function App() {
                 <div>
                   debug: frameSdk={String(debugEnv.hasFrameSdk)} sdk.ctx={String(debugEnv.hasSdkContext)}
                 </div>
+                <div>
+                  debug: quickAuth.hasGetToken={String(debugQuickAuth.hasGetToken)} token={String(debugQuickAuth.tokenReceived)} len={String(debugQuickAuth.tokenLen || '')}
+                </div>
+                <div>
+                  debug: quickAuth.sub={String(debugQuickAuth.decodedSub || '')} iss={String(debugQuickAuth.decodedIss || '')} authStatus={String(debugQuickAuth.authStatus || '')}
+                </div>
+                {debugQuickAuth.authError ? (
+                  <div className="truncate">debug: quickAuth.err={String(debugQuickAuth.authError)}</div>
+                ) : null}
                 {debugSignInResult ? (
                   <div className="truncate">debug: signInResult={JSON.stringify(debugSignInResult)}</div>
                 ) : (
