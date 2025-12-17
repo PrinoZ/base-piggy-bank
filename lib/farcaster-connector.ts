@@ -9,7 +9,6 @@
  */
 
 import { createConnector } from 'wagmi';
-import { injected } from '@wagmi/connectors';
 import type { CreateConnectorFn } from 'wagmi';
 
 // Helper to get Farcaster wallet provider
@@ -36,39 +35,58 @@ async function getFarcasterProvider(): Promise<any> {
   return null;
 }
 
-// Create a custom connector that wraps injected connector but checks Farcaster first
+// Create a custom connector that detects Farcaster wallet provider
+// This connector will work in Farcaster/Warpcast environments
 export const farcasterMiniApp: CreateConnectorFn = (config: any) => {
-  // Use injected connector as base, but check for Farcaster provider first
-  const injectedConnector = injected()(config);
-  
-  return {
-    ...injectedConnector,
+  return createConnector((config) => ({
     id: 'farcaster',
     name: 'Farcaster Wallet',
+    type: 'injected',
     async connect(parameters: any) {
-      // Try to get Farcaster provider first
+      // Try to get Farcaster provider
       const provider = await getFarcasterProvider();
-      if (provider) {
-        // Provider is available, use injected connector
-        return injectedConnector.connect(parameters);
+      if (!provider) {
+        throw new Error('Farcaster wallet not available');
       }
-      // Not in Farcaster environment, let injected connector handle it
-      return injectedConnector.connect(parameters);
+
+      // Request account access
+      const accounts = await provider.request({
+        method: 'eth_requestAccounts',
+      });
+
+      return {
+        accounts: accounts.map((account: string) => account as `0x${string}`),
+        chainId: await provider.request({ method: 'eth_chainId' }).then((id: string) => Number(id)),
+      };
+    },
+    async disconnect() {
+      // Farcaster wallet doesn't support disconnect
     },
     async getAccounts() {
       const provider = await getFarcasterProvider();
       if (provider && provider.selectedAddress) {
-        return [provider.selectedAddress];
+        return [provider.selectedAddress as `0x${string}`];
       }
-      return injectedConnector.getAccounts();
+      return [];
+    },
+    async getChainId() {
+      const provider = await getFarcasterProvider();
+      if (provider) {
+        const chainId = await provider.request({ method: 'eth_chainId' });
+        return Number(chainId);
+      }
+      return config.chains[0]?.id || 8453;
     },
     async isAuthorized() {
       const provider = await getFarcasterProvider();
-      if (provider && provider.selectedAddress) {
-        return true;
-      }
-      return injectedConnector.isAuthorized();
+      return !!(provider && provider.selectedAddress);
     },
-  };
+    onAccountsChanged(accounts) {
+      // Handle account changes
+    },
+    onChainChanged(chainId) {
+      // Handle chain changes
+    },
+  }))(config);
 };
 
