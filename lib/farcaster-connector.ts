@@ -54,6 +54,7 @@ export function farcasterMiniApp(): CreateConnectorFn {
         const provider = await getFarcasterProvider();
         if (!provider) throw new Error('Farcaster wallet not available');
 
+        // This will prompt ONLY if the user hasn't previously connected/authorized.
         const accounts = await provider.request({ method: 'eth_requestAccounts' });
         const chainIdHex = await provider.request({ method: 'eth_chainId' });
 
@@ -67,6 +68,15 @@ export function farcasterMiniApp(): CreateConnectorFn {
       },
       async getAccounts() {
         const provider = await getFarcasterProvider();
+        if (!provider) return [];
+        try {
+          // Prefer EIP-1193 eth_accounts (does not prompt)
+          const accounts = await provider.request({ method: 'eth_accounts' });
+          if (Array.isArray(accounts) && accounts.length > 0) {
+            return accounts.map((a: string) => a as `0x${string}`);
+          }
+        } catch {}
+        // Fallback: some providers expose selectedAddress
         const selected = provider?.selectedAddress;
         return selected ? [selected as `0x${string}`] : [];
       },
@@ -80,6 +90,12 @@ export function farcasterMiniApp(): CreateConnectorFn {
       },
       async isAuthorized() {
         const provider = await getFarcasterProvider();
+        if (!provider) return false;
+        try {
+          // EIP-1193 eth_accounts indicates whether the user already authorized this app.
+          const accounts = await provider.request({ method: 'eth_accounts' });
+          return Array.isArray(accounts) && accounts.length > 0;
+        } catch {}
         return !!provider?.selectedAddress;
       },
       onAccountsChanged(_accounts: any) {},

@@ -586,6 +586,34 @@ export default function App() {
     };
   }, [baseUser?.fid, baseUser?.username]);
 
+  // If we have a fid but no avatar, try to hydrate profile from backend (optional, requires NEYNAR_API_KEY).
+  useEffect(() => {
+    let cancelled = false;
+    const fid = baseUser?.fid;
+    if (!fid || baseUser?.pfpUrl) return;
+
+    const run = async () => {
+      try {
+        const r = await fetch(`/api/farcaster/profile?fid=${encodeURIComponent(String(fid))}`);
+        const j = await r.json().catch(() => ({}));
+        const u = j?.user;
+        if (!u || cancelled) return;
+        setBaseUser((prev: any) => ({
+          ...(prev || {}),
+          fid: prev?.fid || u.fid,
+          username: prev?.username || u.username,
+          displayName: prev?.displayName || u.displayName,
+          pfpUrl: prev?.pfpUrl || u.pfpUrl,
+        }));
+      } catch {}
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseUser?.fid, baseUser?.pfpUrl]);
+
   // FIP-11: Sign in with Farcaster
   // Based on: https://github.com/farcasterxyz/protocol/discussions/110
   // The SDK's actions.signIn() should generate a FIP-11 compliant SIWE message
