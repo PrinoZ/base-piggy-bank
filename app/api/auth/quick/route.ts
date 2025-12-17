@@ -76,7 +76,10 @@ export async function POST(req: Request) {
       value: sessionJwt,
       httpOnly: true,
       secure: true,
-      sameSite: 'lax',
+      // In embedded webviews/miniapp shells, cookies can be treated as "third-party".
+      // SameSite=None improves the chance the cookie is sent back on subsequent requests.
+      // (Some clients may still block cookies entirely; the frontend also has a localStorage fallback.)
+      sameSite: 'none',
       path: '/',
       maxAge: SESSION_MAX_AGE_SECONDS,
     });

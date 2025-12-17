@@ -343,6 +343,14 @@ export default function App() {
   // but the user already authenticated previously).
   useEffect(() => {
     hydrateFromSession();
+    // Cookie may be blocked in embedded webviews; fall back to localStorage-stored fid.
+    try {
+      const fidStr = window.localStorage.getItem('bpb_fc_fid');
+      const fid = fidStr ? Number(fidStr) : NaN;
+      if (Number.isFinite(fid) && fid > 0 && !baseUser?.fid) {
+        setBaseUser((prev: any) => ({ ...(prev || {}), fid }));
+      }
+    } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -571,11 +579,21 @@ export default function App() {
         if (!token || cancelled) return;
 
         // Create server session cookie
-        await fetch('/api/auth/quick', {
+        const authRes = await fetch('/api/auth/quick', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ token }),
         });
+        // Store fid locally as a fallback (some miniapp webviews block cookies)
+        try {
+          const j = await authRes.json().catch(() => ({}));
+          const fid = j?.user?.fid;
+          if (fid) {
+            window.localStorage.setItem('bpb_fc_fid', String(fid));
+            if (!cancelled) setBaseUser((prev: any) => ({ ...(prev || {}), fid }));
+          }
+        } catch {}
 
         // Re-read context after Quick Auth (some hosts populate user context after auth)
         try {
@@ -671,11 +689,17 @@ export default function App() {
         if (typeof getToken === 'function') {
           const token = await Promise.resolve(getToken({ force: true }));
           if (token) {
-            await fetch('/api/auth/quick', {
+            const authRes = await fetch('/api/auth/quick', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
               body: JSON.stringify({ token }),
             });
+            try {
+              const j = await authRes.json().catch(() => ({}));
+              const fid = j?.user?.fid;
+              if (fid) window.localStorage.setItem('bpb_fc_fid', String(fid));
+            } catch {}
             await hydrateFromSession();
           }
         }
