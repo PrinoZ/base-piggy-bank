@@ -4,6 +4,7 @@ import "./globals.css";
 // ✅ 新增：引入我们刚才创建的 Providers 组件
 import { Providers } from './providers';
 import type { ReactNode } from 'react';
+import { ReadyHandshake } from './ReadyHandshake';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -120,6 +121,8 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50 text-slate-900`}
       >
+        {/* Ensure Farcaster/Base splash screen is dismissed even if page hydration is slow */}
+        <ReadyHandshake />
         {/* ✅ 关键修改：在这里包裹 Providers */}
         <Providers>
           {children}

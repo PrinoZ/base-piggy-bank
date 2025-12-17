@@ -992,8 +992,8 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-white text-slate-900 font-sans overflow-hidden max-w-md mx-auto shadow-2xl">
-      <header className="flex-none h-16 px-4 border-b border-slate-200 flex justify-between items-center bg-white z-10">
+    <div className="flex flex-col min-h-[100dvh] bg-white text-slate-900 font-sans max-w-md mx-auto shadow-2xl">
+      <header className="flex-none min-h-16 px-4 py-3 border-b border-slate-200 flex justify-between items-center bg-white z-10 pt-safe">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold shadow-md"><PiggyBank size={18} /></div>
           <div>
@@ -1059,7 +1059,7 @@ export default function App() {
         </ConnectButton.Custom>
       </header>
 
-      <main className="flex-1 flex flex-col min-h-0 bg-white">
+      <main className="flex-1 flex flex-col min-h-0 bg-white px-safe">
         {chainId && chainId !== 8453 && (
           <div className="bg-amber-50 text-amber-800 text-xs font-semibold px-4 py-2 flex items-center justify-between border-b border-amber-100">
             <span>Switch to Base Mainnet to continue.</span>
@@ -1090,7 +1090,7 @@ export default function App() {
               </div>
               <div className="flex-1 w-full min-h-0 flex flex-col px-4 py-2">
                 {/* Chart uses a viewport-based height to avoid overlap when mobile browser UI expands/collapses */}
-                <div className="w-full h-[28vh] min-h-[160px] max-h-[240px]"> 
+                <div className="w-full h-[clamp(140px,24vh,220px)]"> 
                     {isMounted ? (
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={calculation.data} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
@@ -1106,7 +1106,7 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <div className="flex-none p-5 bg-white space-y-3">
+            <div className="flex-none p-4 bg-white space-y-3">
               <div>
                 <label className="flex justify-between text-xs font-bold text-slate-700 mb-1"><span>Target Goal</span><span className="text-slate-500 font-medium">cbBTC</span></label>
                 <div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">🎯</span><input type="number" value={targetGoal} step="0.01" placeholder="Set a visual goal" onChange={(e) => setTargetGoal(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-9 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" /></div>
@@ -1210,7 +1210,7 @@ export default function App() {
       </main>
 
       <nav className="flex-none bg-white border-t border-slate-200 pb-safe z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-        <div className="flex justify-around items-center h-16">
+        <div className="flex justify-around items-center min-h-16">
           <button onClick={() => setActiveTab('strategy')} className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'strategy' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}><BarChart2 size={24} strokeWidth={activeTab === 'strategy' ? 3 : 2} /><span className="text-[10px] font-bold uppercase tracking-wide">Strategy</span></button>
           <div className="w-px h-8 bg-slate-100"></div>
           <button onClick={() => setActiveTab('assets')} className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-all ${activeTab === 'assets' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}><Wallet size={24} strokeWidth={activeTab === 'assets' ? 3 : 2} /><span className="text-[10px] font-bold uppercase tracking-wide">Assets</span></button>
