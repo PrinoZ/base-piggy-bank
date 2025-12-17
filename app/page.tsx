@@ -885,6 +885,7 @@ export default function App() {
 
     setIsLoading(true);
     const normalizedAccount = address.toLowerCase();
+    let step: 'allowance' | 'approve' | 'sign' | 'create-plan' | 'unknown' = 'unknown';
 
     try {
         if (!amount || Number(amount) <= 0) {
@@ -892,6 +893,7 @@ export default function App() {
             return;
         }
 
+        step = 'allowance';
         setDcaStatus('Checking allowance…');
       const now = Date.now();
       const expiresAt = now + 5 * 60 * 1000; // 5 分钟有效
@@ -902,15 +904,26 @@ export default function App() {
         const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, signer);
         
         const requiredAmount = ethers.parseUnits(amount.toString(), 6);
-        const allowance = await usdcContract.allowance(normalizedAccount, DCA_CONTRACT_ADDRESS);
+        let allowance: bigint;
+        try {
+          allowance = await usdcContract.allowance(normalizedAccount, DCA_CONTRACT_ADDRESS);
+        } catch (e: any) {
+          // Some embedded providers can be flaky with eth_call; surface a clearer message.
+          throw new Error(
+            `Failed to read USDC allowance (step=allowance). Make sure you're on Base Mainnet and try again.`
+          );
+        }
         
         if (allowance < requiredAmount) {
+            step = 'approve';
             setDcaStatus('Approving USDC…');
-            const approveTx = await usdcContract.approve(DCA_CONTRACT_ADDRESS, ethers.MaxUint256);
+            // Approve only what we need (some wallets/providers may block MaxUint256 approvals)
+            const approveTx = await usdcContract.approve(DCA_CONTRACT_ADDRESS, requiredAmount);
             await approveTx.wait();
         }
 
         const message = `Confirm DCA Plan Creation: Token=USDC->cbBTC, Amount=$${amount}, Freq=${FREQUENCIES[freqIndex].label}, Nonce=${nonce}, ExpiresAt=${expiresAt}`;
+        step = 'sign';
         setDcaStatus('Signing…');
         const signature = await signer.signMessage(message);
 
@@ -923,6 +936,7 @@ export default function App() {
             next_run_time: new Date().toISOString()
         };
 
+        step = 'create-plan';
         setDcaStatus('Creating plan…');
         const response = await fetch('/api/create-plan', {
             method: 'POST',
@@ -944,7 +958,14 @@ export default function App() {
         if (err?.code === "ACTION_REJECTED" || err?.info?.error?.code === 4001) {
             setDcaError('Cancelled by user.');
         } else {
-            setDcaError(err?.shortMessage || err?.message || 'Failed to start DCA.');
+            const msg = String(err?.shortMessage || err?.message || '');
+            if (msg.toLowerCase().includes('missing revert data')) {
+              setDcaError(
+                `Transaction reverted without a reason (step=${step}). This usually means you're on the wrong network, the contract address is wrong for the current chain, or the wallet provider couldn't simulate the call. Please confirm you're on Base Mainnet (8453) and retry.`
+              );
+            } else {
+              setDcaError(err?.shortMessage || err?.message || `Failed to start DCA (step=${step}).`);
+            }
         }
     } finally {
         setIsLoading(false);
