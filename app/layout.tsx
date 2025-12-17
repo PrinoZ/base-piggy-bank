@@ -70,6 +70,7 @@ export default function RootLayout({
 }>) {
   // Render Base / Farcaster meta tags directly in <head> to guarantee exact
   // names like `fc:miniapp` (avoid any serialization quirks like `fc::miniapp`).
+  // Farcaster requires a specific format for embed preview to work correctly.
   const miniappEmbed = {
     version: 'next',
     imageUrl: `${APP_URL}/miniapp-preview.png`,
@@ -91,8 +92,13 @@ export default function RootLayout({
         {/* Base app ownership */}
         <meta name="base:app_id" content="693aa07d8a7c4e55fec73dfe" />
 
-        {/* Base Mini App embed metadata (must be present on homeUrl) */}
+        {/* Farcaster Mini App embed metadata (required for Home URL Embed Preview) */}
+        {/* Format must match Farcaster's expected structure exactly */}
         <meta name="fc:miniapp" content={JSON.stringify(miniappEmbed)} />
+        
+        {/* Additional OpenGraph tags for better embed preview support */}
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="Base Piggy Bank" />
 
         {/* Farcaster Frame metadata (optional, kept for compatibility) */}
         <meta name="fc:frame" content="vNext" />
