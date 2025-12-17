@@ -50,11 +50,13 @@ export async function GET(req: Request) {
 
     let data: any = null;
     let user: any = null;
+    let sawOkJson = false;
     const tries: any[] = [];
     for (const u of candidates) {
       const res = await fetchJson(u, headers);
       tries.push({ url: res?.__url, ok: res?.__ok, status: res?.__status });
       if (res?.__ok && res?.__json) {
+        sawOkJson = true;
         const candidateData = res.__json;
         const foundUser = pickFirstUser(candidateData);
         if (foundUser) {
@@ -63,6 +65,14 @@ export async function GET(req: Request) {
           break;
         }
       }
+    }
+
+    // If we got OK JSON responses but never found a user, return "no_user" (not "neynar_not_ok").
+    if (!data && sawOkJson) {
+      return NextResponse.json(
+        { user: null, reason: 'no_user', tries: debug ? tries : undefined },
+        { status: 200 }
+      );
     }
 
     if (!data) {

@@ -647,16 +647,33 @@ export default function App() {
     try {
       // @ts-ignore
       const baseSignIn = window?.base?.actions?.signIn || window?.base?.miniapp?.actions?.signIn;
+      let signInResult: any = null;
       if (typeof baseSignIn === 'function') {
-        await Promise.resolve(baseSignIn());
+        signInResult = await Promise.resolve(baseSignIn());
       } else {
         const mod: any = await import('@farcaster/frame-sdk');
         const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
         const sdkSignIn = sdk?.actions?.signIn;
         if (typeof sdkSignIn === 'function') {
-          await Promise.resolve(sdkSignIn());
+          signInResult = await Promise.resolve(sdkSignIn());
         }
       }
+
+      // If signIn() returns a fid/user, persist it immediately (works even when QuickAuth/cookies are blocked).
+      try {
+        const fid =
+          typeof signInResult?.fid === 'number'
+            ? signInResult.fid
+            : typeof signInResult?.user?.fid === 'number'
+              ? signInResult.user.fid
+              : typeof signInResult?.payload?.sub === 'number'
+                ? signInResult.payload.sub
+                : undefined;
+        if (fid) {
+          try { window.localStorage.setItem('bpb_fc_fid', String(fid)); } catch {}
+          setBaseUser((prev: any) => ({ ...(prev || {}), fid }));
+        }
+      } catch {}
 
       try {
         const mod: any = await import('@farcaster/frame-sdk');
