@@ -72,12 +72,12 @@ export default function RootLayout({
   // names like `fc:miniapp` (avoid any serialization quirks like `fc::miniapp`).
   // Farcaster requires a specific format for embed preview to work correctly.
   const miniappEmbed = {
-    version: 'next',
+    version: '1',
     imageUrl: `${APP_URL}/miniapp-preview.png`,
     button: {
       title: 'Open App',
       action: {
-        type: 'launch_frame',
+        type: 'launch_miniapp',
         url: APP_URL,
         name: 'Base Piggy Bank',
         splashImageUrl: `${APP_URL}/icon-512.png`,
