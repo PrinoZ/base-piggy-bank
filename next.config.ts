@@ -3,7 +3,11 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   webpack: (config, { isServer }) => {
     // 忽略这些在客户端构建中不需要的库
-    config.externals.push('pino-pretty', 'lokijs', 'encoding');
+    if (Array.isArray(config.externals)) {
+      config.externals.push('pino-pretty', 'lokijs', 'encoding');
+    } else {
+      config.externals = [config.externals, 'pino-pretty', 'lokijs', 'encoding'];
+    }
     
     // 修复 MetaMask SDK 在浏览器环境中尝试导入 React Native 依赖的问题
     if (!isServer) {
