@@ -5,24 +5,20 @@ import { supabase } from '@/lib/supabaseClient';
 import { ethers } from 'ethers'; 
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Wallet, TrendingUp, Calendar, DollarSign, Clock, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank, LayoutGrid, XCircle, RefreshCw, Plus, ChevronDown, ChevronUp, Share2, AlertTriangle, ExternalLink, Info } from 'lucide-react';
+import { Wallet, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank, XCircle, RefreshCw, Plus, ChevronDown, ChevronUp, Share2, AlertTriangle, ExternalLink } from 'lucide-react';
 
-// === 关键修改 1: 引入 RainbowKit / Wagmi ===
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useConnectModal, useChainModal } from '@rainbow-me/rainbowkit';
 import { useAccount, useReadContract, useChainId, useSwitchChain } from 'wagmi';
-import { parseAbi } from 'viem'; // 用于处理 ABI 兼容
+import { parseAbi } from 'viem';
 import { useEthersSigner } from '../lib/ethers-adapter';
 
-// === CONSTANTS ===
 const CURRENT_ASSET_PRICE = 96000; 
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; 
 const CBBTC_ADDRESS = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"; 
 const DCA_CONTRACT_ADDRESS = "0x9432f3cf09e63d4b45a8e292ad4d38d2e677ad0c";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
 
-// === 关键修改 2: ABI 兼容性修复 ===
-// Ethers 可以直接吃字符串数组，但 Wagmi 需要用 parseAbi 转换
 const ERC20_ABI = parseAbi([
   "function approve(address spender, uint256 amount) external returns (bool)",
   "function allowance(address owner, address spender) external view returns (uint256)",
@@ -37,7 +33,6 @@ const FREQUENCIES = [
   { label: 'Bi-Weekly', days: 14, value: 'Bi-Weekly' }
 ];
 
-// === HELPERS (保持不变) ===
 const getFutureDateLabel = (monthsToAdd: number) => {
   const date = new Date();
   date.setMonth(date.getMonth() + monthsToAdd);
@@ -73,7 +68,6 @@ const CompactSlider = ({ label, value, min, max, onChange, unit }: any) => (
   </div>
 );
 
-// === COMPONENTS (PlanCard 保持不变) ===
 const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, refreshTrigger }: any) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [history, setHistory] = useState<any[]>([]);
@@ -125,8 +119,6 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
     const handleShare = async (e: any) => {
         e.stopPropagation(); 
         const text = `I'm auto-investing cbBTC via @BasePiggyBank! 🐷\n\nAccumulated: ${realStats.btc.toFixed(4)} BTC\nInvested: $${realStats.usd}\n\nStart your journey on Base! 🚀`;
-        // Share a dedicated URL that renders Frame-only metadata so Base App shows a
-        // controllable Frame card/button (instead of the Mini App unified CTA).
         const url = `${APP_URL || window.location.origin}/share`;
         try {
             if (navigator.share) await navigator.share({ title: 'Base Piggy Bank', text: text, url });
@@ -261,36 +253,28 @@ const PlanCard = ({ job, isTemplate = false, onCancel, isLoading, usdcBalance, r
     );
 };
 
-// ==========================================
-//              MAIN APP
-// ==========================================
-
 export default function App() {
   const [activeTab, setActiveTab] = useState('strategy'); 
   
-  // === 关键修改 3: 使用 RainbowKit / Wagmi Hooks ===
-  const { address, isConnected } = useAccount(); // 替代 const [account, setAccount]
+  const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChain, isPending: isSwitchingChain } = useSwitchChain();
   const { openConnectModal } = useConnectModal();
   const { openChainModal } = useChainModal();
   
-  // 使用我们自定义的 adapter 获取 Ethers Signer (用于 write 操作)
   const signer = useEthersSigner(); 
   
-  // 使用 Wagmi 自动获取余额 (Read 操作)
   const { data: balanceData } = useReadContract({ 
     address: USDC_ADDRESS,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
     query: {
-        enabled: !!address, // 只有连接时才查询
-        refetchInterval: 10000, // 10秒刷新一次
+        enabled: !!address,
+        refetchInterval: 10000,
     }
   });
 
-  // wagmi 的余额(BigInt) 转为字符串显示
   const usdcBalance = useMemo(() => {
     if (balanceData) return ethers.formatUnits(balanceData, 6);
     return null;
@@ -327,7 +311,6 @@ export default function App() {
   const [baseSignInLoading, setBaseSignInLoading] = useState(false);
   const [debugBase, setDebugBase] = useState(false);
 
-  // Read our server session cookie (set by /api/auth/quick) and hydrate fid without any UI.
   const hydrateFromSession = async () => {
     try {
       const r = await fetch('/api/auth/me', { method: 'GET' });
@@ -339,11 +322,8 @@ export default function App() {
     } catch {}
   };
 
-  // Always attempt to hydrate from session cookie on mount (covers cases where wallet isn't connected yet,
-  // but the user already authenticated previously).
   useEffect(() => {
     hydrateFromSession();
-    // Cookie may be blocked in embedded webviews; fall back to localStorage-stored fid.
     try {
       const fidStr = window.localStorage.getItem('bpb_fc_fid');
       const fid = fidStr ? Number(fidStr) : NaN;
@@ -366,14 +346,12 @@ export default function App() {
     if (!u) return null;
 
     const candidate = {
-      // fid may be number or numeric string depending on host
       fid:
         typeof u?.fid === 'number'
           ? u.fid
           : typeof u?.fid === 'string' && /^\d+$/.test(u.fid)
             ? Number(u.fid)
             : undefined,
-      // username fields vary across hosts
       username:
         typeof u?.username === 'string'
           ? u.username
@@ -408,14 +386,11 @@ export default function App() {
   
   useEffect(() => { setIsMounted(true); }, []);
 
-  // Base Mini App host handshake: tells Base the app is ready to display (otherwise you may only see the splash screen)
   useEffect(() => {
     let done = false;
     const tryReady = async () => {
       if (done) return;
       try {
-        // 1) Try Base host API (if present)
-        // Host APIs can arrive asynchronously; retry briefly.
         // @ts-ignore
         const baseReadyFn = window?.base?.actions?.ready || window?.base?.miniapp?.actions?.ready;
         if (typeof baseReadyFn === 'function') {
@@ -425,8 +400,6 @@ export default function App() {
           return;
         }
 
-        // 2) Try Farcaster Frame SDK (Base Mini Apps use the same embed/launch infrastructure)
-        // Dynamic import to avoid SSR issues.
         const mod: any = await import('@farcaster/frame-sdk');
         const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
         const sdkReady = sdk?.actions?.ready;
@@ -437,11 +410,9 @@ export default function App() {
           return;
         }
       } catch {
-        // ignore and keep retrying until timeout
       }
     };
 
-    // Try immediately, then retry for a few seconds.
     tryReady();
     const interval = setInterval(tryReady, 250);
     const timeout = setTimeout(() => {
@@ -456,7 +427,6 @@ export default function App() {
     };
   }, []);
 
-  // Base Mini App / Frame context: best-effort parse from URL search or window
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -465,7 +435,6 @@ export default function App() {
       const baseCtx = params.get('baseContext');
       if (frameCtx) setFrameContext(JSON.parse(decodeURIComponent(frameCtx)));
       if (baseCtx) setBaseContext(JSON.parse(decodeURIComponent(baseCtx)));
-      // Some hosts expose window.base?.context
       // @ts-ignore
       if (!baseCtx && window?.base?.context) setBaseContext(window.base.context);
     } catch (err) {
@@ -473,19 +442,16 @@ export default function App() {
     }
   }, []);
 
-  // Base identity: try to read user info from Base host context or Frame SDK context.
   useEffect(() => {
     let done = false;
 
     const tryIdentity = async () => {
       if (done) return;
       try {
-        // Detect Base host quickly
         // @ts-ignore
         const hasBase = !!(window?.base || window?.base?.miniapp);
         if (hasBase) setIsBaseHost(true);
 
-        // Prefer already-parsed baseContext
         const fromState = extractBaseUser(baseContext) || extractBaseUser(frameContext);
         if (fromState) {
           setBaseUser(fromState);
@@ -493,7 +459,6 @@ export default function App() {
           return;
         }
 
-        // Pull from window.base.context if available
         // @ts-ignore
         const wbCtx = window?.base?.context || window?.base?.miniapp?.context;
         if (wbCtx) {
@@ -506,10 +471,8 @@ export default function App() {
           }
         }
 
-        // Pull from Frame SDK context (dynamic import; avoids SSR)
         const mod: any = await import('@farcaster/frame-sdk');
         const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
-        // Some hosts require ready() before context is populated
         const sdkReady = sdk?.actions?.ready;
         if (typeof sdkReady === 'function') {
           try { await Promise.resolve(sdkReady()); } catch {}
@@ -527,7 +490,6 @@ export default function App() {
           }
         }
       } catch {
-        // ignore and retry briefly
       }
     };
 
@@ -545,9 +507,6 @@ export default function App() {
     };
   }, [baseContext, frameContext]);
 
-  // Farcaster Quick Auth (no signature UI, no button click):
-  // If the host supports Quick Auth, we can get a signed JWT and create a session cookie on our backend.
-  // Docs: https://miniapps.farcaster.xyz/docs/sdk/quick-auth/get-token
   useEffect(() => {
     let cancelled = false;
 
@@ -565,7 +524,6 @@ export default function App() {
         const sdk = await loadSdk();
         if (!sdk) return;
 
-        // Skip if we already have identity
         if (baseUser?.fid || baseUser?.username) return;
 
         const isInMiniApp =
@@ -578,14 +536,12 @@ export default function App() {
         const token = await Promise.resolve(getToken({ force: false }));
         if (!token || cancelled) return;
 
-        // Create server session cookie
         const authRes = await fetch('/api/auth/quick', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ token }),
         });
-        // Store fid locally as a fallback (some miniapp webviews block cookies)
         try {
           const j = await authRes.json().catch(() => ({}));
           const fid = j?.user?.fid;
@@ -595,7 +551,6 @@ export default function App() {
           }
         } catch {}
 
-        // Re-read context after Quick Auth (some hosts populate user context after auth)
         try {
           const sdkCtx =
             typeof sdk?.context === 'function' ? await sdk.context() : sdk?.context;
@@ -603,14 +558,11 @@ export default function App() {
           if (u && !cancelled) setBaseUser(u);
         } catch {}
 
-        // Fallback: at least get fid from our session cookie
         if (!cancelled) await hydrateFromSession();
       } catch (e) {
-        // ignore
       }
     };
 
-    // Wait a bit for host injection + ready() to happen.
     const t = setTimeout(tryQuickAuth, 800);
     return () => {
       cancelled = true;
@@ -618,7 +570,6 @@ export default function App() {
     };
   }, [baseUser?.fid, baseUser?.username]);
 
-  // If wallet is connected but we still don't have fid, try to hydrate from session cookie.
   useEffect(() => {
     if (isConnected && !baseUser?.fid) {
       hydrateFromSession();
@@ -626,7 +577,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected]);
 
-  // If we have a fid but no avatar, try to hydrate profile from backend (optional, requires NEYNAR_API_KEY).
   useEffect(() => {
     let cancelled = false;
     const fid = baseUser?.fid;
@@ -654,34 +604,23 @@ export default function App() {
     };
   }, [baseUser?.fid, baseUser?.pfpUrl]);
 
-  // FIP-11: Sign in with Farcaster
-  // Based on: https://github.com/farcasterxyz/protocol/discussions/110
-  // The SDK's actions.signIn() should generate a FIP-11 compliant SIWE message
-  // with statement "Farcaster Auth", chain-id 10, and resource farcaster://fids/<fid>
   const handleBaseSignIn = async () => {
     if (baseSignInLoading) return;
     setBaseSignInLoading(true);
     try {
-      // Try Base App sign-in API first
       // @ts-ignore
       const baseSignIn = window?.base?.actions?.signIn || window?.base?.miniapp?.actions?.signIn;
       if (typeof baseSignIn === 'function') {
-        // Base App sign-in should generate FIP-11 compliant SIWE message
         await Promise.resolve(baseSignIn());
       } else {
-        // Fallback to Farcaster Frame SDK
         const mod: any = await import('@farcaster/frame-sdk');
         const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
         const sdkSignIn = sdk?.actions?.signIn;
         if (typeof sdkSignIn === 'function') {
-          // Farcaster SDK sign-in should generate FIP-11 compliant SIWE message
-          // Format: statement "Farcaster Auth", chain-id 10, resource farcaster://fids/<fid>
           await Promise.resolve(sdkSignIn());
         }
       }
 
-      // After sign-in, try to get a Quick Auth token (if supported) and establish our server session cookie.
-      // This helps us reliably obtain fid even when context doesn't include full user profile.
       try {
         const mod: any = await import('@farcaster/frame-sdk');
         const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
@@ -705,8 +644,6 @@ export default function App() {
         }
       } catch {}
 
-      // After sign-in, re-pull context and extract user immediately.
-      // The sign-in process should update the context with user identity (FID, username, etc.)
       // @ts-ignore
       const wbCtx = window?.base?.context || window?.base?.miniapp?.context;
       if (wbCtx) {
@@ -715,7 +652,6 @@ export default function App() {
         const u = extractBaseUser(wbCtx);
         if (u) setBaseUser(u);
       } else {
-        // Try Farcaster SDK context
         const mod: any = await import('@farcaster/frame-sdk');
         const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
         const sdkCtx =
@@ -728,14 +664,12 @@ export default function App() {
         }
       }
     } catch (e) {
-      // Silently ignore; host may not support sign-in in this context.
       console.warn('FIP-11 Sign in with Farcaster failed/unavailable', e);
     } finally {
       setBaseSignInLoading(false);
     }
   };
 
-  // 当连接状态变化时，自动刷新数据
   useEffect(() => {
     if (isConnected && address) {
         handleRefresh(address);
@@ -899,18 +833,24 @@ export default function App() {
       const expiresAt = now + 5 * 60 * 1000; // 5 分钟有效
       const nonce = crypto.randomUUID ? crypto.randomUUID() : `${now}-${Math.random()}`;
         
-        // ⚠️ 使用 adapter 提供 signer，代码与之前完全兼容
-        // 即使 ERC20_ABI 用了 parseAbi，Ethers v6 也能兼容
-        const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, signer);
-        
+        // Use a public RPC for read-only calls (more reliable in embedded wallets than provider eth_call)
+        // You can override via NEXT_PUBLIC_BASE_RPC_URL if desired.
+        const BASE_RPC_URL =
+          process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://mainnet.base.org';
+
+        const usdcReadProvider = new ethers.JsonRpcProvider(BASE_RPC_URL);
+        const usdcReadContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, usdcReadProvider);
+
+        // Use signer only for write tx (approve)
+        const usdcWriteContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, signer);
+
         const requiredAmount = ethers.parseUnits(amount.toString(), 6);
         let allowance: bigint;
         try {
-          allowance = await usdcContract.allowance(normalizedAccount, DCA_CONTRACT_ADDRESS);
+          allowance = await usdcReadContract.allowance(normalizedAccount, DCA_CONTRACT_ADDRESS);
         } catch (e: any) {
-          // Some embedded providers can be flaky with eth_call; surface a clearer message.
           throw new Error(
-            `Failed to read USDC allowance (step=allowance). Make sure you're on Base Mainnet and try again.`
+            `Failed to read USDC allowance (step=allowance). This is often caused by embedded wallet eth_call limitations. Please retry.`
           );
         }
         
@@ -918,7 +858,7 @@ export default function App() {
             step = 'approve';
             setDcaStatus('Approving USDC…');
             // Approve only what we need (some wallets/providers may block MaxUint256 approvals)
-            const approveTx = await usdcContract.approve(DCA_CONTRACT_ADDRESS, requiredAmount);
+            const approveTx = await usdcWriteContract.approve(DCA_CONTRACT_ADDRESS, requiredAmount);
             await approveTx.wait();
         }
 
