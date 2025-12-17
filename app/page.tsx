@@ -498,6 +498,74 @@ export default function App() {
     };
   }, [baseContext, frameContext]);
 
+  // Farcaster Quick Auth (no signature UI, no button click):
+  // If the host supports Quick Auth, we can get a signed JWT and create a session cookie on our backend.
+  // Docs: https://miniapps.farcaster.xyz/docs/sdk/quick-auth/get-token
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSdk = async () => {
+      try {
+        const mod: any = await import('@farcaster/frame-sdk');
+        return mod?.sdk || mod?.default?.sdk || mod?.default || mod;
+      } catch {
+        return null;
+      }
+    };
+
+    const tryQuickAuth = async () => {
+      try {
+        const sdk = await loadSdk();
+        if (!sdk) return;
+
+        // Skip if we already have identity
+        if (baseUser?.fid || baseUser?.username) return;
+
+        const isInMiniApp =
+          typeof sdk?.isInMiniApp === 'function' ? await sdk.isInMiniApp() : undefined;
+        if (isInMiniApp === false) return;
+
+        const getToken = sdk?.quickAuth?.getToken;
+        if (typeof getToken !== 'function') return;
+
+        const token = await Promise.resolve(getToken({ force: false }));
+        if (!token || cancelled) return;
+
+        // Create server session cookie
+        await fetch('/api/auth/quick', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token }),
+        });
+
+        // Re-read context after Quick Auth (some hosts populate user context after auth)
+        try {
+          const sdkCtx =
+            typeof sdk?.context === 'function' ? await sdk.context() : sdk?.context;
+          const u = extractBaseUser(sdkCtx);
+          if (u && !cancelled) setBaseUser(u);
+        } catch {}
+
+        // Fallback: at least get fid from our session cookie
+        try {
+          const r = await fetch('/api/auth/me', { method: 'GET' });
+          const j = await r.json().catch(() => ({}));
+          const fid = j?.user?.fid;
+          if (fid && !cancelled) setBaseUser((prev: any) => prev || { fid });
+        } catch {}
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    // Wait a bit for host injection + ready() to happen.
+    const t = setTimeout(tryQuickAuth, 800);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [baseUser?.fid, baseUser?.username]);
+
   // FIP-11: Sign in with Farcaster
   // Based on: https://github.com/farcasterxyz/protocol/discussions/110
   // The SDK's actions.signIn() should generate a FIP-11 compliant SIWE message
