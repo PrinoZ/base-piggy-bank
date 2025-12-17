@@ -15,6 +15,11 @@ const nextConfig: NextConfig = {
       const webpack = require('webpack');
       const path = require('path');
       
+      // 确保 plugins 数组存在
+      if (!config.plugins) {
+        config.plugins = [];
+      }
+      
       config.plugins.push(
         new webpack.NormalModuleReplacementPlugin(
           /@react-native-async-storage\/async-storage/,
@@ -23,6 +28,7 @@ const nextConfig: NextConfig = {
       );
       
       // 同时添加到 fallback 和 alias，确保完全忽略
+      config.resolve = config.resolve || {};
       config.resolve.fallback = {
         ...(config.resolve.fallback || {}),
         '@react-native-async-storage/async-storage': false,
@@ -32,6 +38,13 @@ const nextConfig: NextConfig = {
         ...(config.resolve.alias || {}),
         '@react-native-async-storage/async-storage': path.resolve(__dirname, 'lib/empty-module.js'),
       };
+      
+      // 添加 IgnorePlugin 作为额外保障
+      config.plugins.push(
+        new webpack.IgnorePlugin({
+          resourceRegExp: /^@react-native-async-storage\/async-storage$/,
+        })
+      );
     }
     
     return config;

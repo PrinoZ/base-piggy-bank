@@ -38,13 +38,22 @@ const { wallets } = getDefaultWallets({
   projectId: wcProjectId,
 });
 
+// Create base config first (needed for connectors that require config)
+const baseConfig = {
+  chains: [base],
+  transports: {
+    [base.id]: http(),
+  },
+  ssr: true,
+};
+
 // Create connectors array with Farcaster connector first, then RainbowKit wallets
 // RainbowKit wallets already include injected connector support
 const connectors = [
   // 1. Farcaster Mini App connector (for Farcaster/Warpcast)
   // This will automatically connect if user has a connected wallet in Farcaster
   // If not in Farcaster environment, it will gracefully fail and next connector will be tried
-  farcasterMiniApp(),
+  farcasterMiniApp(baseConfig as any),
   
   // 2. RainbowKit default wallets (MetaMask, WalletConnect, Coinbase, etc.)
   // These include injected connector support for Base App and standard browser wallets
@@ -56,12 +65,8 @@ const connectors = [
 ];
 
 const config = createConfig({
-  chains: [base],
-  transports: {
-    [base.id]: http(),
-  },
+  ...baseConfig,
   connectors,
-  ssr: true,
 });
 
 const queryClient = new QueryClient();

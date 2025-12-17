@@ -38,7 +38,7 @@ async function getFarcasterProvider(): Promise<any> {
 // Create a custom connector that detects Farcaster wallet provider
 // This connector will work in Farcaster/Warpcast environments
 export const farcasterMiniApp: CreateConnectorFn = (config: any) => {
-  return createConnector((config) => ({
+  return createConnector((connectorConfig) => ({
     id: 'farcaster',
     name: 'Farcaster Wallet',
     type: 'injected',
@@ -75,7 +75,7 @@ export const farcasterMiniApp: CreateConnectorFn = (config: any) => {
         const chainId = await provider.request({ method: 'eth_chainId' });
         return Number(chainId);
       }
-      return config.chains[0]?.id || 8453;
+      return connectorConfig.chains[0]?.id || 8453;
     },
     async isAuthorized() {
       const provider = await getFarcasterProvider();
