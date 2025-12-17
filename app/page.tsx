@@ -954,20 +954,15 @@ export default function App() {
             const ready = mounted;
             const connected = ready && account && chain;
 
-            const baseName =
-              baseUser?.displayName ||
-              (baseUser?.username
-                ? `@${baseUser.username}`
-                : baseUser?.fid
-                  ? `fid ${baseUser.fid}`
-                  : undefined);
             const baseAvatar = baseUser?.pfpUrl || null;
-
-            const label = baseName || (account ? account.displayName : 'Connect');
+            const fallbackAvatar =
+              account?.address
+                ? `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(account.address)}`
+                : null;
 
             return (
               <div
-                className="flex items-center gap-2 px-3 py-2 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors text-slate-900"
+                className="flex items-center gap-2 px-2 py-2 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors text-slate-900"
                 style={{ opacity: ready ? 1 : 0, pointerEvents: ready ? 'auto' : 'none' }}
               >
                 <button
@@ -976,22 +971,23 @@ export default function App() {
                     if (!connected) openConnectModal?.();
                     else openAccountModal?.();
                   }}
-                  className="flex items-center gap-2"
+                  className="flex items-center"
+                  aria-label={connected ? 'Account' : 'Connect'}
                 >
-                  <div className="w-6 h-6 rounded-full bg-white border border-slate-200 overflow-hidden flex items-center justify-center">
-                    {baseAvatar ? (
+                  <div className="w-7 h-7 rounded-full bg-white border border-slate-200 overflow-hidden flex items-center justify-center">
+                    {/* Prefer Farcaster/Base avatar if available; otherwise show a deterministic identicon */}
+                    {(baseAvatar || fallbackAvatar) ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={baseAvatar} alt="avatar" className="w-full h-full object-cover" />
+                      <img
+                        src={baseAvatar || fallbackAvatar || ''}
+                        alt="avatar"
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
                     ) : (
-                      <span className="text-[11px] font-black text-slate-700">
-                        {(baseName || account?.displayName || 'BPB').slice(0, 1).toUpperCase()}
-                      </span>
+                      <span className="text-[11px] font-black text-slate-700">BPB</span>
                     )}
                   </div>
-
-                  <span className="text-xs font-extrabold max-w-[120px] truncate">
-                    {label}
-                  </span>
                 </button>
 
                 {/* If we are in Base host but missing identity, offer sign-in right here */}
@@ -1010,20 +1006,7 @@ export default function App() {
                   </button>
                 )}
 
-                {/* Optional: chain picker indicator */}
-                {connected && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openChainModal?.();
-                    }}
-                    className="text-[10px] font-bold text-slate-500 hover:text-slate-700"
-                    title="Network"
-                  >
-                    {chain?.name === 'Base' ? 'Base' : chain?.name}
-                  </button>
-                )}
+                {/* (Optional) If you want chain picker back later, we can re-add it. */}
               </div>
             );
           }}
