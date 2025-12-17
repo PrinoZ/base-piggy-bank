@@ -339,20 +339,40 @@ export default function App() {
     if (!u) return null;
 
     const candidate = {
-      fid: typeof u?.fid === 'number' ? u.fid : undefined,
-      username: typeof u?.username === 'string' ? u.username : undefined,
+      // fid may be number or numeric string depending on host
+      fid:
+        typeof u?.fid === 'number'
+          ? u.fid
+          : typeof u?.fid === 'string' && /^\d+$/.test(u.fid)
+            ? Number(u.fid)
+            : undefined,
+      // username fields vary across hosts
+      username:
+        typeof u?.username === 'string'
+          ? u.username
+          : typeof u?.handle === 'string'
+            ? u.handle
+            : typeof u?.fname === 'string'
+              ? u.fname
+              : undefined,
       displayName:
         typeof u?.displayName === 'string'
           ? u.displayName
           : typeof u?.display_name === 'string'
             ? u.display_name
-            : undefined,
+            : typeof u?.name === 'string'
+              ? u.name
+              : undefined,
       pfpUrl:
         typeof u?.pfpUrl === 'string'
           ? u.pfpUrl
           : typeof u?.pfp_url === 'string'
             ? u.pfp_url
-            : undefined,
+            : typeof u?.pfp?.url === 'string'
+              ? u.pfp.url
+              : typeof u?.avatarUrl === 'string'
+                ? u.avatarUrl
+                : undefined,
     };
 
     if (candidate.username || candidate.displayName || candidate.fid) return candidate;
@@ -936,7 +956,11 @@ export default function App() {
 
             const baseName =
               baseUser?.displayName ||
-              (baseUser?.username ? `@${baseUser.username}` : undefined);
+              (baseUser?.username
+                ? `@${baseUser.username}`
+                : baseUser?.fid
+                  ? `fid ${baseUser.fid}`
+                  : undefined);
             const baseAvatar = baseUser?.pfpUrl || null;
 
             const label = baseName || (account ? account.displayName : 'Connect');
