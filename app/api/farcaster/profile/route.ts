@@ -8,13 +8,14 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const fidStr = url.searchParams.get('fid') || '';
+    const debug = url.searchParams.get('debug') === '1';
     const fid = Number(fidStr);
     if (!Number.isFinite(fid) || fid <= 0) {
-      return NextResponse.json({ user: null }, { status: 200 });
+      return NextResponse.json({ user: null, reason: 'invalid_fid' }, { status: 200 });
     }
 
     if (!NEYNAR_API_KEY) {
-      return NextResponse.json({ user: null }, { status: 200 });
+      return NextResponse.json({ user: null, reason: 'missing_neynar_api_key' }, { status: 200 });
     }
 
     // Neynar bulk user endpoint (v2)
@@ -28,12 +29,16 @@ export async function GET(req: Request) {
     });
 
     if (!r.ok) {
-      return NextResponse.json({ user: null }, { status: 200 });
+      const text = debug ? await r.text().catch(() => '') : '';
+      return NextResponse.json(
+        { user: null, reason: 'neynar_not_ok', status: r.status, body: debug ? text : undefined },
+        { status: 200 }
+      );
     }
 
     const j: any = await r.json().catch(() => ({}));
     const u = Array.isArray(j?.users) ? j.users[0] : null;
-    if (!u) return NextResponse.json({ user: null }, { status: 200 });
+    if (!u) return NextResponse.json({ user: null, reason: 'no_user' }, { status: 200 });
 
     return NextResponse.json(
       {
@@ -57,7 +62,7 @@ export async function GET(req: Request) {
       { status: 200 }
     );
   } catch {
-    return NextResponse.json({ user: null }, { status: 200 });
+    return NextResponse.json({ user: null, reason: 'exception' }, { status: 200 });
   }
 }
 
