@@ -313,6 +313,19 @@ export default function App() {
   const [debugBase, setDebugBase] = useState(false);
   const [debugLsFid, setDebugLsFid] = useState<string | null>(null);
   const [debugSignInResult, setDebugSignInResult] = useState<any>(null);
+  const [debugEnv, setDebugEnv] = useState<{
+    hasWindowBase: boolean;
+    hasWindowBaseContext: boolean;
+    hasFrameSdk: boolean;
+    inMiniApp: boolean | null;
+    hasSdkContext: boolean;
+  }>({
+    hasWindowBase: false,
+    hasWindowBaseContext: false,
+    hasFrameSdk: false,
+    inMiniApp: null,
+    hasSdkContext: false,
+  });
 
   const mergeBaseUser = (u: any) => {
     if (!u) return;
@@ -500,6 +513,9 @@ export default function App() {
       try {
         // @ts-ignore
         const hasBase = !!(window?.base || window?.base?.miniapp);
+        // @ts-ignore
+        const hasBaseCtx = !!(window?.base?.context || window?.base?.miniapp?.context);
+        setDebugEnv((prev) => ({ ...prev, hasWindowBase: hasBase, hasWindowBaseContext: hasBaseCtx }));
         if (hasBase) setIsBaseHost(true);
 
         const fromState = extractBaseUser(baseContext) || extractBaseUser(frameContext);
@@ -523,6 +539,15 @@ export default function App() {
 
         const mod: any = await import('@farcaster/frame-sdk');
         const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
+        setDebugEnv((prev) => ({ ...prev, hasFrameSdk: !!sdk }));
+        let inMiniApp: boolean | null = null;
+        try {
+          inMiniApp = typeof sdk?.isInMiniApp === 'function' ? await sdk.isInMiniApp() : null;
+        } catch {
+          inMiniApp = null;
+        }
+        setDebugEnv((prev) => ({ ...prev, inMiniApp }));
+        if (inMiniApp === true) setIsBaseHost(true);
         const sdkReady = sdk?.actions?.ready;
         if (typeof sdkReady === 'function') {
           try { await Promise.resolve(sdkReady()); } catch {}
@@ -530,6 +555,7 @@ export default function App() {
         const sdkCtx =
           typeof sdk?.context === 'function' ? await sdk.context() : sdk?.context;
         if (sdkCtx) {
+          setDebugEnv((prev) => ({ ...prev, hasSdkContext: true }));
           setIsBaseHost(true);
           setBaseContext((prev: any) => prev || sdkCtx);
           const fromSdk = extractBaseUser(sdkCtx);
@@ -739,6 +765,7 @@ export default function App() {
       }
     } catch (e) {
       console.warn('FIP-11 Sign in with Farcaster failed/unavailable', e);
+      try { setDebugSignInResult({ error: String((e as any)?.message || e) }); } catch {}
     } finally {
       setBaseSignInLoading(false);
     }
@@ -1076,7 +1103,7 @@ export default function App() {
                         : 'Base Host Detected'}
                   {baseReadySent ? ' · Ready' : ' · Waiting…'}
                 </p>
-                {isBaseHost && !baseUser && (
+                {((isBaseHost || debugBase) && !baseUser?.fid) && (
                   <button
                     onClick={handleBaseSignIn}
                     disabled={baseSignInLoading}
@@ -1092,6 +1119,12 @@ export default function App() {
                 <div>debug: host={String(isBaseHost)} ready={String(baseReadySent)} connected={String(isConnected)}</div>
                 <div>debug: baseUser.fid={String(baseUser?.fid || '')} ls_fid={String(debugLsFid || '')}</div>
                 <div className="truncate">debug: addr={(address || '').slice(0, 10)}{address ? '…' : ''}</div>
+                <div>
+                  debug: inMiniApp={String(debugEnv.inMiniApp)} window.base={String(debugEnv.hasWindowBase)} base.ctx={String(debugEnv.hasWindowBaseContext)}
+                </div>
+                <div>
+                  debug: frameSdk={String(debugEnv.hasFrameSdk)} sdk.ctx={String(debugEnv.hasSdkContext)}
+                </div>
                 {debugSignInResult ? (
                   <div className="truncate">debug: signInResult={JSON.stringify(debugSignInResult)}</div>
                 ) : (
