@@ -1,92 +1,79 @@
-/**
- * Custom Farcaster Mini App connector for Wagmi
- * 
- * This connector detects Farcaster SDK and automatically connects if a wallet is available.
- * Based on Farcaster docs: https://miniapps.farcaster.xyz/docs/guides/wallets
- * 
- * Since @farcaster/miniapp-wagmi-connector may not be published yet,
- * we create a custom connector that wraps injected() but checks Farcaster SDK first.
- */
+'use client';
 
-import { createConnector } from 'wagmi';
-import type { CreateConnectorFn } from 'wagmi';
+import * as React from 'react';
+import {
+  RainbowKitProvider,
+  getDefaultWallets,
+  getDefaultConfig,
+} from '@rainbow-me/rainbowkit';
+import {
+  trustWallet,
+  ledgerWallet,
+} from '@rainbow-me/rainbowkit/wallets';
+import { base } from 'wagmi/chains';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { WagmiProvider, http, createConfig } from 'wagmi';
+import { farcasterMiniApp } from '@/lib/farcaster-connector';
+import '@rainbow-me/rainbowkit/styles.css';
 
-// Helper to get Farcaster wallet provider
-async function getFarcasterProvider(): Promise<any> {
-  try {
-    // Dynamic import to avoid SSR issues
-    const mod: any = await import('@farcaster/frame-sdk');
-    const sdk = mod?.sdk || mod?.default?.sdk || mod?.default || mod;
-    
-    if (sdk?.wallet?.getEthereumProvider) {
-      const provider = await sdk.wallet.getEthereumProvider();
-      if (provider) {
-        // Inject provider into window.ethereum so injected connector can use it
-        if (typeof window !== 'undefined' && !(window as any).ethereum) {
-          (window as any).ethereum = provider;
-        }
-        return provider;
-      }
-    }
-  } catch (e) {
-    // Not in Farcaster environment
-    return null;
-  }
-  return null;
+// WalletConnect / Reown Project ID (public)
+// Prefer env in production, but keep a fallback to avoid breaking embeds/preview environments.
+const wcProjectId = process.env.NEXT_PUBLIC_WC_PROJECT_ID || '217245ec2cae6778a51d6168f3e098ea';
+
+// IMPORTANT:
+// If WalletConnect/Reown blocks the origin (403 allowlist), it can break the embedded Base.dev/Base App experience.
+// Fix via Reown Cloud Domain allowlist (not code).
+
+// Create config with connectors prioritized for different environments
+// Priority: Farcaster > Injected (Base App/standard wallets) > Other wallets
+// 
+// Note: 
+// - Farcaster connector will auto-connect in Farcaster/Warpcast if wallet is connected
+// - Base App typically injects wallet into window.ethereum, so injected() will work
+// - If Farcaster connector doesn't work (not in Farcaster env), it will gracefully fail
+//   and fallback to other connectors
+// Get default wallets from RainbowKit (includes MetaMask, WalletConnect, Coinbase, etc.)
+const { wallets } = getDefaultWallets({
+  appName: 'Base Piggy Bank',
+  projectId: wcProjectId,
+});
+
+// Create connectors array with Farcaster connector first, then RainbowKit wallets
+// RainbowKit wallets already include injected connector support
+const connectors = [
+  // 1. Farcaster Mini App connector (for Farcaster/Warpcast)
+  // This will automatically connect if user has a connected wallet in Farcaster
+  // If not in Farcaster environment, it will gracefully fail and next connector will be tried
+  farcasterMiniApp(),
+  
+  // 2. RainbowKit default wallets (MetaMask, WalletConnect, Coinbase, etc.)
+  // These include injected connector support for Base App and standard browser wallets
+  ...wallets.map((wallet: any) => wallet.createConnector()),
+  
+  // 3. Additional wallets
+  trustWallet({ projectId: wcProjectId }),
+  ledgerWallet({ projectId: wcProjectId }),
+];
+
+const config = createConfig({
+  chains: [base],
+  transports: {
+    [base.id]: http(),
+  },
+  connectors,
+  ssr: true,
+});
+
+const queryClient = new QueryClient();
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <WagmiProvider config={config}>
+      <QueryClientProvider client={queryClient}>
+        <RainbowKitProvider>
+          {children}
+        </RainbowKitProvider>
+      </QueryClientProvider>
+    </WagmiProvider>
+  );
 }
-
-// Create a custom connector that detects Farcaster wallet provider
-// This connector will work in Farcaster/Warpcast environments
-export const farcasterMiniApp: CreateConnectorFn = (config: any) => {
-  return createConnector((config) => ({
-    id: 'farcaster',
-    name: 'Farcaster Wallet',
-    type: 'injected',
-    async connect(parameters: any) {
-      // Try to get Farcaster provider
-      const provider = await getFarcasterProvider();
-      if (!provider) {
-        throw new Error('Farcaster wallet not available');
-      }
-
-      // Request account access
-      const accounts = await provider.request({
-        method: 'eth_requestAccounts',
-      });
-
-      return {
-        accounts: accounts.map((account: string) => account as `0x${string}`),
-        chainId: await provider.request({ method: 'eth_chainId' }).then((id: string) => Number(id)),
-      };
-    },
-    async disconnect() {
-      // Farcaster wallet doesn't support disconnect
-    },
-    async getAccounts() {
-      const provider = await getFarcasterProvider();
-      if (provider && provider.selectedAddress) {
-        return [provider.selectedAddress as `0x${string}`];
-      }
-      return [];
-    },
-    async getChainId() {
-      const provider = await getFarcasterProvider();
-      if (provider) {
-        const chainId = await provider.request({ method: 'eth_chainId' });
-        return Number(chainId);
-      }
-      return config.chains[0]?.id || 8453;
-    },
-    async isAuthorized() {
-      const provider = await getFarcasterProvider();
-      return !!(provider && provider.selectedAddress);
-    },
-    onAccountsChanged(accounts) {
-      // Handle account changes
-    },
-    onChainChanged(chainId) {
-      // Handle chain changes
-    },
-  }))(config);
-};
-
