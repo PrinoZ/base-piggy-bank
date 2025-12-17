@@ -4,7 +4,7 @@ import * as React from 'react';
 import {
   RainbowKitProvider,
   getDefaultWallets,
-  getDefaultConfig,
+  connectorsForWallets,
 } from '@rainbow-me/rainbowkit';
 import {
   trustWallet,
@@ -33,26 +33,32 @@ const wcProjectId = process.env.NEXT_PUBLIC_WC_PROJECT_ID || '217245ec2cae6778a5
 // - If Farcaster connector doesn't work (not in Farcaster env), it will gracefully fail
 //   and fallback to other connectors
 // Get default wallets from RainbowKit (includes MetaMask, WalletConnect, Coinbase, etc.)
-const { wallets } = getDefaultWallets({
+const { wallets: defaultWalletGroups } = getDefaultWallets({
   appName: 'Base Piggy Bank',
   projectId: wcProjectId,
 });
 
+// Add extra wallets (optional)
+const walletGroups = [
+  ...defaultWalletGroups,
+  {
+    groupName: 'Other',
+    wallets: [trustWallet, ledgerWallet],
+  },
+];
+
 // Create connectors array with Farcaster connector first, then RainbowKit wallets
 // RainbowKit wallets already include injected connector support
+const rainbowKitConnectors = connectorsForWallets(walletGroups as any, {
+  appName: 'Base Piggy Bank',
+  projectId: wcProjectId,
+});
+
 const connectors = [
-  // 1. Farcaster Mini App connector (for Farcaster/Warpcast)
-  // This will automatically connect if user has a connected wallet in Farcaster
-  // If not in Farcaster environment, it will gracefully fail and next connector will be tried
+  // 1) Farcaster connector (auto-connect in Farcaster if wallet is already connected)
   farcasterMiniApp(),
-  
-  // 2. RainbowKit default wallets (MetaMask, WalletConnect, Coinbase, etc.)
-  // These include injected connector support for Base App and standard browser wallets
-  ...wallets.map((wallet: any) => wallet.createConnector()),
-  
-  // 3. Additional wallets
-  trustWallet({ projectId: wcProjectId }),
-  ledgerWallet({ projectId: wcProjectId }),
+  // 2) RainbowKit connectors (injected, WalletConnect, Coinbase, etc.)
+  ...rainbowKitConnectors,
 ];
 
 const config = createConfig({
