@@ -991,6 +991,13 @@ export default function App() {
     finally { setIsLoading(false); }
   };
 
+  const isStrategyTab = activeTab === 'strategy';
+  const mainClassName = `flex-1 min-h-0 bg-white px-safe ${
+    isStrategyTab
+      ? 'overflow-hidden'
+      : 'overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom,0px))]'
+  }`;
+
   return (
     <div className="flex flex-col h-[100dvh] bg-white text-slate-900 font-sans max-w-md mx-auto shadow-2xl overflow-hidden">
       <header className="flex-none min-h-16 px-4 py-3 border-b border-slate-200 flex justify-between items-center bg-white z-10 pt-safe">
@@ -1059,8 +1066,8 @@ export default function App() {
         </ConnectButton.Custom>
       </header>
 
-      {/* Single scroll surface for all tabs (prevents nested-scroll + overlap across devices) */}
-      <main className="flex-1 min-h-0 bg-white px-safe overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom,0px))]">
+      {/* Strategy: single-screen (no scroll). Other tabs: one scroll surface. */}
+      <main className={mainClassName}>
         {chainId && chainId !== 8453 && (
           <div className="bg-amber-50 text-amber-800 text-xs font-semibold px-4 py-2 flex items-center justify-between border-b border-amber-100">
             <span>Switch to Base Mainnet to continue.</span>
@@ -1074,9 +1081,9 @@ export default function App() {
           </div>
         )}
         {activeTab === 'strategy' && (
-          <div className="flex flex-col">
-            <div className="flex-1 bg-slate-50 border-b border-slate-200 flex flex-col relative min-h-0">
-              <div className="px-5 pt-4 pb-2 flex-none">
+          <div className="flex flex-col h-full overflow-hidden">
+            <div className="flex-1 bg-slate-50 border-b border-slate-200 flex flex-col relative min-h-0 overflow-hidden">
+              <div className="px-5 pt-3 pb-1 flex-none [@media(max-height:740px)]:pt-2">
                 <div className="w-full">
                     <div className="flex items-baseline gap-2">
                         <div className="text-3xl font-black text-slate-900 tracking-tighter leading-none">{calculation.totalCoins.toFixed(4)}</div>
@@ -1089,9 +1096,9 @@ export default function App() {
                     </div>
                 </div>
               </div>
-              <div className="flex-1 w-full min-h-0 flex flex-col px-4 py-2">
-                {/* Chart uses a viewport-based height to avoid overlap when mobile browser UI expands/collapses */}
-                <div className="w-full h-[clamp(140px,24vh,220px)]"> 
+              <div className="flex-1 w-full min-h-0 flex flex-col px-4 pt-1 pb-3 overflow-hidden">
+                {/* Chart flexes to remaining height so Strategy can stay single-screen */}
+                <div className="w-full flex-1 min-h-[120px] [@media(max-height:740px)]:min-h-[100px] [@media(max-height:690px)]:min-h-[88px]">
                     {isMounted ? (
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={calculation.data} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
@@ -1107,25 +1114,25 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <div className="flex-none p-4 bg-white space-y-3">
+            <div className="flex-none p-4 bg-white space-y-3 [@media(max-height:740px)]:p-3 [@media(max-height:690px)]:p-2">
               <div>
                 <label className="flex justify-between text-xs font-bold text-slate-700 mb-1"><span>Target Goal</span><span className="text-slate-500 font-medium">cbBTC</span></label>
-                <div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">🎯</span><input type="number" value={targetGoal} step="0.01" placeholder="Set a visual goal" onChange={(e) => setTargetGoal(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-9 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" /></div>
-                <p className="text-[10px] text-slate-400 mt-2 px-2 font-medium text-center">This goal is for preview only and does not affect your DCA plan.</p>
+                <div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">🎯</span><input type="number" value={targetGoal} step="0.01" placeholder="Set a visual goal" onChange={(e) => setTargetGoal(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-9 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all [@media(max-height:740px)]:py-2.5 [@media(max-height:740px)]:text-base [@media(max-height:690px)]:py-2" /></div>
+                <p className="text-[10px] text-slate-400 mt-2 px-2 font-medium text-center [@media(max-height:690px)]:hidden">This goal is for preview only and does not affect your DCA plan.</p>
               </div>
               <div>
                 <label className="flex justify-between text-xs font-bold text-slate-700 mb-1"><span>Amount per Trade</span><span className="text-slate-500 font-medium">USDC</span></label>
-                <div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">$</span><input type="number" min="0.01" step="0.01" value={amount} placeholder="Min 1" onChange={(e) => { const val = e.target.value; if (val === '') { setAmount(''); return; } const num = Number(val); if (num < 0) return; setAmount(num); }} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-7 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all" /></div>
+                <div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 font-bold">$</span><input type="number" min="0.01" step="0.01" value={amount} placeholder="Min 1" onChange={(e) => { const val = e.target.value; if (val === '') { setAmount(''); return; } const num = Number(val); if (num < 0) return; setAmount(num); }} className="w-full bg-slate-100 border border-slate-200 text-slate-900 font-bold text-lg rounded-xl py-3 pl-7 pr-3 focus:ring-2 focus:ring-blue-600 outline-none transition-all [@media(max-height:740px)]:py-2.5 [@media(max-height:740px)]:text-base [@media(max-height:690px)]:py-2" /></div>
               </div>
               <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Frequency</label>
                   <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-lg">
-                    {FREQUENCIES.map((freq, idx) => (<button key={freq.value} onClick={() => setFreqIndex(idx)} className={`py-2 rounded-md text-[10px] font-bold transition-all leading-tight ${freqIndex === idx ? 'bg-white text-blue-700 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'}`}>{freq.label}</button>))}
+                    {FREQUENCIES.map((freq, idx) => (<button key={freq.value} onClick={() => setFreqIndex(idx)} className={`py-2 rounded-md text-[10px] font-bold transition-all leading-tight ${freqIndex === idx ? 'bg-white text-blue-700 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'} [@media(max-height:690px)]:py-1.5`}>{freq.label}</button>))}
                   </div>
               </div>
-              <div className="pt-1"><CompactSlider label="Duration" value={duration} min={1} max={48} unit="Months" onChange={setDuration} /></div>
+              <div className="pt-1 [@media(max-height:690px)]:pt-0"><CompactSlider label="Duration" value={duration} min={1} max={48} unit="Months" onChange={setDuration} /></div>
               <div className="pt-1">
-                <button className={`w-full text-white font-bold text-lg py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 active:bg-blue-700 active:scale-[0.98] shadow-blue-600/20'}`} onClick={handleStartDCA} disabled={isLoading}>
+                <button className={`w-full text-white font-bold text-lg py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all ${isLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 active:bg-blue-700 active:scale-[0.98] shadow-blue-600/20'} [@media(max-height:740px)]:py-2.5 [@media(max-height:740px)]:text-base [@media(max-height:690px)]:py-2`} onClick={handleStartDCA} disabled={isLoading}>
                   {isLoading ? 'Processing...' : (<>Start DCA <ChevronRight size={20} /></>)}
                 </button>
                 {dcaError && (
@@ -1133,7 +1140,7 @@ export default function App() {
                     {dcaError}
                   </div>
                 )}
-                <p className="text-[10px] text-slate-400 mt-2 px-2 font-medium text-center">This is a non-custodial protocol. We don't hold any user funds.</p>
+                <p className="text-[10px] text-slate-400 mt-2 px-2 font-medium text-center [@media(max-height:690px)]:hidden">This is a non-custodial protocol. We don't hold any user funds.</p>
               </div>
             </div>
           </div>
