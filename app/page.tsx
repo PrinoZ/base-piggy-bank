@@ -9,7 +9,7 @@ import { Wallet, Trophy, ChevronRight, Activity, BarChart2, Layers, PiggyBank, X
 
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useConnectModal, useChainModal } from '@rainbow-me/rainbowkit';
-import { useAccount, useReadContract, useChainId, useSwitchChain } from 'wagmi';
+import { useAccount, useReadContract, useChainId, useSwitchChain, useWriteContract } from 'wagmi';
 import { parseAbi } from 'viem';
 import { useEthersSigner } from '../lib/ethers-adapter';
 
@@ -261,6 +261,7 @@ export default function App() {
   const { switchChain, isPending: isSwitchingChain } = useSwitchChain();
   const { openConnectModal } = useConnectModal();
   const { openChainModal } = useChainModal();
+  const { writeContractAsync } = useWriteContract();
   
   const signer = useEthersSigner(); 
   
@@ -857,9 +858,31 @@ export default function App() {
         if (allowance < requiredAmount) {
             step = 'approve';
             setDcaStatus('Approving USDC…');
-            // Approve only what we need (some wallets/providers may block MaxUint256 approvals)
-            const approveTx = await usdcWriteContract.approve(DCA_CONTRACT_ADDRESS, requiredAmount);
-            await approveTx.wait();
+            // Some tokens/providers require resetting allowance to 0 before increasing it.
+            // Also: in embedded Farcaster wallets, ethers BrowserProvider can be flaky for contract writes.
+            // Prefer wagmi/viem writeContract (wallet client) for the approve tx.
+            try {
+              if (allowance > 0n) {
+                await writeContractAsync({
+                  address: USDC_ADDRESS,
+                  abi: ERC20_ABI,
+                  functionName: 'approve',
+                  args: [DCA_CONTRACT_ADDRESS, 0n],
+                  chainId: 8453,
+                } as any);
+              }
+              await writeContractAsync({
+                address: USDC_ADDRESS,
+                abi: ERC20_ABI,
+                functionName: 'approve',
+                args: [DCA_CONTRACT_ADDRESS, requiredAmount],
+                chainId: 8453,
+              } as any);
+            } catch (e: any) {
+              // Fallback to ethers signer path
+              const approveTx = await usdcWriteContract.approve(DCA_CONTRACT_ADDRESS, requiredAmount);
+              await approveTx.wait();
+            }
         }
 
         const message = `Confirm DCA Plan Creation: Token=USDC->cbBTC, Amount=$${amount}, Freq=${FREQUENCIES[freqIndex].label}, Nonce=${nonce}, ExpiresAt=${expiresAt}`;
