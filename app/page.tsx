@@ -377,7 +377,9 @@ export default function App() {
       ctx?.farcaster?.context?.user ||
       ctx?.frameContext?.user ||
       ctx?.client?.user ||
-      ctx?.context?.user;
+      ctx?.context?.user ||
+      // Some hosts put identity fields at the root of context
+      (ctx?.fid || ctx?.username || ctx?.pfpUrl || ctx?.pfp_url ? ctx : null);
     if (!u) return null;
 
     const candidate = {

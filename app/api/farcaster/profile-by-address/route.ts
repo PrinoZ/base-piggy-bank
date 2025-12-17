@@ -4,14 +4,19 @@ const NEYNAR_API_KEY = process.env.NEYNAR_API_KEY;
 
 async function fetchJson(url: string, headers: Record<string, string>) {
   const r = await fetch(url, { headers: headers as any, cache: 'no-store' });
-  if (!r.ok) return null;
-  return await r.json().catch(() => null);
+  const text = await r.text().catch(() => '');
+  if (!r.ok) return { __ok: false, __status: r.status, __body: text, __url: url };
+  const json = (() => {
+    try { return text ? JSON.parse(text) : null; } catch { return null; }
+  })();
+  return { __ok: true, __status: r.status, __json: json, __url: url };
 }
 
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const address = (url.searchParams.get('address') || '').toLowerCase();
+    const debug = url.searchParams.get('debug') === '1';
     if (!/^0x[0-9a-f]{40}$/.test(address)) {
       return NextResponse.json({ user: null, reason: 'invalid_address' }, { status: 200 });
     }
@@ -33,12 +38,22 @@ export async function GET(req: Request) {
     ];
 
     let data: any = null;
+    const tries: any[] = [];
     for (const u of candidates) {
-      data = await fetchJson(u, headers);
-      if (data) break;
+      const res = await fetchJson(u, headers);
+      tries.push({ url: res?.__url, ok: res?.__ok, status: res?.__status });
+      if (res?.__ok && res?.__json) {
+        data = res.__json;
+        break;
+      }
     }
 
-    if (!data) return NextResponse.json({ user: null, reason: 'neynar_not_ok' }, { status: 200 });
+    if (!data) {
+      return NextResponse.json(
+        { user: null, reason: 'neynar_not_ok', tries: debug ? tries : undefined },
+        { status: 200 }
+      );
+    }
 
     // Normalize possible shapes
     const user =
@@ -47,7 +62,12 @@ export async function GET(req: Request) {
       data?.user ||
       null;
 
-    if (!user) return NextResponse.json({ user: null, reason: 'no_user' }, { status: 200 });
+    if (!user) {
+      return NextResponse.json(
+        { user: null, reason: 'no_user', tries: debug ? tries : undefined },
+        { status: 200 }
+      );
+    }
 
     return NextResponse.json(
       {
