@@ -85,6 +85,17 @@ export default function RootLayout({
       },
     },
   };
+  // For backward compatibility: fc:frame can carry the same embed JSON but uses `launch_frame`.
+  const miniappEmbedAsFrame = {
+    ...miniappEmbed,
+    button: {
+      ...miniappEmbed.button,
+      action: {
+        ...miniappEmbed.button.action,
+        type: 'launch_frame',
+      },
+    },
+  };
 
   return (
     <html lang="en">
@@ -94,22 +105,17 @@ export default function RootLayout({
 
         {/* Farcaster Mini App embed metadata (required for Home URL Embed Preview) */}
         {/* Format must match Farcaster's expected structure exactly */}
-        <meta property="fc:miniapp" content={JSON.stringify(miniappEmbed)} />
-        {/* Some parsers still read `name`, keep both for compatibility */}
         <meta name="fc:miniapp" content={JSON.stringify(miniappEmbed)} />
+        {/* Some parsers still read `property`, keep both for compatibility */}
+        <meta property="fc:miniapp" content={JSON.stringify(miniappEmbed)} />
+
+        {/* Backward compatibility (per Farcaster docs): fc:frame can also hold the same embed JSON */}
+        <meta name="fc:frame" content={JSON.stringify(miniappEmbedAsFrame)} />
+        <meta property="fc:frame" content={JSON.stringify(miniappEmbedAsFrame)} />
         
         {/* Additional OpenGraph tags for better embed preview support */}
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="Base Piggy Bank" />
-
-        {/* Farcaster Frame metadata (optional, kept for compatibility) */}
-        <meta property="fc:frame" content="vNext" />
-        <meta property="fc:frame:image" content={`${APP_URL}/og-image.png`} />
-        <meta property="fc:frame:image:aspect_ratio" content="1.91:1" />
-        <meta property="fc:frame:post_url" content={`${APP_URL}/api/frame`} />
-        <meta property="fc:frame:button:1" content="Launch Piggy Bank 🚀" />
-        <meta property="fc:frame:button:1:action" content="link" />
-        <meta property="fc:frame:button:1:target" content={APP_URL} />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50 text-slate-900`}
